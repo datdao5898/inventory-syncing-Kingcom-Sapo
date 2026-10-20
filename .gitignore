@@ -1,0 +1,10 @@
+# Bi mat: key Sapo, token Haravan, mat khau web
+.env
+settings.json
+
+# Du lieu van hanh
+reports/
+logs/
+
+__pycache__/
+*.pyc

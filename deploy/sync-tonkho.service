@@ -1,0 +1,14 @@
+[Unit]
+Description=Dong bo ton kho Sapo -> Haravan (web)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+WorkingDirectory=/opt/sapo_haravan_sync
+ExecStart=/usr/bin/python3 /opt/sapo_haravan_sync/web.py
+Restart=always
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target
