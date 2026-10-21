@@ -3,6 +3,7 @@ Description=Dong bo ton kho Sapo -> Haravan (web)
 After=network-online.target
 Wants=network-online.target
 
+# Duong dan /opt/sapo_haravan_sync duoc install.sh/update.sh thay bang thu muc repo thuc te.
 [Service]
 User=synctonkho
 Group=synctonkho

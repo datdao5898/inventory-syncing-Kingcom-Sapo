@@ -4,7 +4,11 @@ Tài liệu này dành cho người hoặc trợ lý AI (ví dụ Hermes) cài w
 Làm lần lượt từng bước. **Mỗi bước có phần "Kết quả đúng"**: nếu kết quả khác, dừng lại và báo cho chủ dự án, đừng tự sửa code.
 
 - Repo: `https://github.com/datdao5898/inventory-syncing-Kingcom-Sapo`
-- Thư mục cài đặt: `/opt/sapo_haravan_sync`
+- Thư mục cài đặt: **thư mục clone repo**, app chạy ngay tại đó. Trên VPS KingCom dùng `/srv/inventory-syncing-Kingcom-Sapo` (cùng chỗ với các app khác).
+  Trong tài liệu này, `$APP_DIR` là thư mục đó. Đặt biến trước khi chạy lệnh:
+  ```bash
+  APP_DIR=/srv/inventory-syncing-Kingcom-Sapo
+  ```
 - Dịch vụ systemd: `sync-tonkho`, chạy bằng user hệ thống `synctonkho` (không chạy bằng root)
 - Không cần cài thư viện Python nào. Chỉ cần `python3` (3.8 trở lên) và `git`.
 
@@ -24,14 +28,15 @@ Làm lần lượt từng bước. **Mỗi bước có phần "Kết quả đún
 Chạy bằng root:
 
 ```bash
-git clone https://github.com/datdao5898/inventory-syncing-Kingcom-Sapo.git /opt/sapo_haravan_sync
-sudo bash /opt/sapo_haravan_sync/deploy/install.sh
+APP_DIR=/srv/inventory-syncing-Kingcom-Sapo
+[ -d "$APP_DIR/.git" ] || git clone https://github.com/datdao5898/inventory-syncing-Kingcom-Sapo.git "$APP_DIR"
+sudo bash "$APP_DIR/deploy/install.sh"
 ```
 
 Script `install.sh` sẽ:
 - cài `git` và `python3`;
 - tạo user `synctonkho`;
-- tạo `/opt/sapo_haravan_sync/.env` từ `.env.example` (nếu chưa có), đặt quyền 600;
+- tạo `$APP_DIR/.env` từ `.env.example` (nếu chưa có), đặt quyền 600;
 - cài dịch vụ `sync-tonkho`.
 
 **Kết quả đúng (lần đầu):** script dừng với thông báo `.env con thieu: ...`. Đây là bình thường, chuyển sang Bước 2.
@@ -41,7 +46,7 @@ Script `install.sh` sẽ:
 ## Bước 2. Điền file cấu hình `.env`
 
 ```bash
-sudo nano /opt/sapo_haravan_sync/.env
+sudo nano $APP_DIR/.env
 ```
 
 | Biến | Giá trị | Ai cung cấp |
@@ -53,22 +58,23 @@ sudo nano /opt/sapo_haravan_sync/.env
 | `SAPO_QTY_FIELD` | Giữ nguyên: `available` | Có sẵn |
 | `WEB_USER` | Tên đăng nhập web, ví dụ `admin` | Tự đặt |
 | `WEB_PASSWORD` | Mật khẩu web mạnh, tạo bằng `openssl rand -base64 18` | Tự tạo, **báo lại cho chủ dự án** |
-| `WEB_PORT` | Cổng web, mặc định `8080`. Đổi nếu cổng đã bị dùng | Tự đặt |
+| `WEB_PORT` | Cổng web. **Trên VPS KingCom dùng `8081`** (8080 đã có nginx). Kiểm tra cổng trống bằng `ss -ltn` | Tự đặt |
 
 Quy tắc ghi: mỗi dòng có dạng `TEN=giatri`, không có dấu cách quanh dấu `=`, không có dấu ngoặc kép.
 
 Lưu xong thì chạy lại:
 
 ```bash
-sudo bash /opt/sapo_haravan_sync/deploy/install.sh
+sudo bash $APP_DIR/deploy/install.sh
 ```
 
-**Kết quả đúng:** dòng `Active: active (running)` và thông báo `Xong. Web: http://<IP-VPS>:8080`.
+**Kết quả đúng:** dòng `Active: active (running)` và thông báo `Xong. Web: http://<IP-VPS>:8081`.
+Nếu báo `Cong ... dang bi chuong trinh khac dung`: đổi `WEB_PORT` sang cổng trống rồi chạy lại.
 
 ## Bước 3. Kiểm tra kết nối Sapo/Haravan (chỉ đọc)
 
 ```bash
-cd /opt/sapo_haravan_sync && runuser -u synctonkho -- python3 sync.py check
+cd $APP_DIR && runuser -u synctonkho -- python3 sync.py check
 ```
 
 **Kết quả đúng:**
@@ -90,7 +96,7 @@ Ket noi OK
 ## Bước 4. Chạy thử (chỉ đọc, không ghi gì lên Haravan)
 
 ```bash
-cd /opt/sapo_haravan_sync && runuser -u synctonkho -- python3 sync.py
+cd $APP_DIR && runuser -u synctonkho -- python3 sync.py
 ```
 
 **Kết quả đúng:** khoảng 30–60 giây sau thấy dòng `Sapo: ... SKU | Haravan: ... SKU | Khop: ... | Can cap nhat: N dong`, và cuối cùng là `Day la CHAY THU`.
@@ -98,8 +104,8 @@ cd /opt/sapo_haravan_sync && runuser -u synctonkho -- python3 sync.py
 ## Bước 5. Kiểm tra web
 
 ```bash
-PORT=$(grep ^WEB_PORT= /opt/sapo_haravan_sync/.env | cut -d= -f2)
-curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:${PORT:-8080}/
+PORT=$(grep ^WEB_PORT= $APP_DIR/.env | cut -d= -f2)
+curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:${PORT:-8081}/
 ```
 
 **Kết quả đúng:** `401` (web đang chạy và đòi đăng nhập).
@@ -107,10 +113,10 @@ curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:${PORT:-8080}/
 Mở cổng tường lửa nếu VPS dùng `ufw`:
 
 ```bash
-sudo ufw allow ${PORT:-8080}/tcp
+sudo ufw allow ${PORT:-8081}/tcp
 ```
 
-Sau đó mở trình duyệt vào `http://<IP-VPS>:8080` và đăng nhập bằng `WEB_USER`/`WEB_PASSWORD`.
+Sau đó mở trình duyệt vào `http://<IP-VPS>:8081` và đăng nhập bằng `WEB_USER`/`WEB_PASSWORD`.
 
 ## Bước 6. Báo cáo lại cho chủ dự án
 
@@ -125,7 +131,7 @@ Gửi các thông tin sau. **Không gửi kèm key/token.**
 ## Cập nhật khi có code mới
 
 ```bash
-sudo bash /opt/sapo_haravan_sync/deploy/update.sh
+sudo bash $APP_DIR/deploy/update.sh
 ```
 
 **Kết quả đúng:** `OK: <commit cũ> -> <commit mới>, web dang chay`. Các file `.env`, lịch sử và báo cáo được giữ nguyên.
@@ -143,10 +149,10 @@ journalctl -u sync-tonkho -f          # xem log trực tiếp
 
 | Đường dẫn | Nội dung |
 |---|---|
-| `/opt/sapo_haravan_sync/.env` | Key, token, mật khẩu web |
-| `/opt/sapo_haravan_sync/settings.json` | Cài đặt tự động cập nhật |
-| `/opt/sapo_haravan_sync/reports/` | Báo cáo CSV, lịch sử chạy, dữ liệu so sánh |
-| `/opt/sapo_haravan_sync/logs/sync.log` | Nhật ký chi tiết |
+| `$APP_DIR/.env` | Key, token, mật khẩu web |
+| `$APP_DIR/settings.json` | Cài đặt tự động cập nhật |
+| `$APP_DIR/reports/` | Báo cáo CSV, lịch sử chạy, dữ liệu so sánh |
+| `$APP_DIR/logs/sync.log` | Nhật ký chi tiết |
 
 ## (Tuỳ chọn) HTTPS với tên miền
 
@@ -155,9 +161,9 @@ Nếu có tên miền trỏ về VPS, có thể dùng Caddy để có `https://`
 ```bash
 sudo apt-get install -y caddy
 echo 'tonkho.tenmien.vn {
-    reverse_proxy 127.0.0.1:8080
+    reverse_proxy 127.0.0.1:8081
 }' | sudo tee /etc/caddy/Caddyfile
 sudo systemctl reload caddy
 ```
 
-Sau đó đặt `WEB_HOST=127.0.0.1` trong `.env`, chạy `systemctl restart sync-tonkho` và đóng cổng 8080 (`sudo ufw delete allow 8080/tcp`). Bước này cần chủ dự án đồng ý và cung cấp tên miền.
+Sau đó đặt `WEB_HOST=127.0.0.1` trong `.env`, chạy `systemctl restart sync-tonkho` và đóng cổng 8081 (`sudo ufw delete allow 8081/tcp`). Bước này cần chủ dự án đồng ý và cung cấp tên miền.
