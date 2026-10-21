@@ -162,6 +162,10 @@ Gửi các thông tin sau. **Không gửi kèm key/token.**
 
 ## Cập nhật khi có code mới
 
+> **Dành cho trợ lý AI/người vận hành:** khi chủ dự án yêu cầu "pull git", "cập nhật", "lấy code mới" cho app này,
+> **luôn chạy `update.sh` bên dưới, không chạy `git pull` trực tiếp.** `git pull` bằng root làm sai quyền sở hữu file
+> (user chạy app là `synctonkho`) và không khởi động lại web, nên thay đổi trong `web.py`/`sync.py` chưa có hiệu lực.
+
 ```bash
 sudo bash $APP_DIR/deploy/update.sh
 ```
