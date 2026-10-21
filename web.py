@@ -89,14 +89,14 @@ def friendly_error(e):
     """Doi loi ky thuat thanh cau de hieu cho nguoi dung."""
     msg = str(e)
     if "Thieu cau hinh" in msg or "LOCATION_MAP" in msg:
-        return "Hệ thống chưa được cấu hình đủ. Hãy báo người quản trị."
+        return "Hệ thống chưa được cấu hình đủ. Hãy báo David Dao."
     if "mysapo.net" in msg and ("HTTP 401" in msg or "HTTP 403" in msg):
-        return "Sapo từ chối truy cập (key sai, hết hạn hoặc thiếu quyền). Hãy báo người quản trị."
+        return "Sapo từ chối truy cập (key sai, hết hạn hoặc thiếu quyền). Hãy báo David Dao."
     if "haravan.com" in msg and ("HTTP 401" in msg or "HTTP 403" in msg):
-        return "Haravan từ chối truy cập (token sai, hết hạn hoặc thiếu quyền). Hãy báo người quản trị."
+        return "Haravan từ chối truy cập (token sai, hết hạn hoặc thiếu quyền). Hãy báo David Dao."
     if "that bai sau" in msg or "loi mang" in msg:
         return "Không kết nối được tới Sapo/Haravan. Hãy thử lại sau ít phút."
-    return "Có lỗi xảy ra. Hãy thử lại; nếu vẫn lỗi, báo người quản trị (chi tiết ở mục Thông tin kỹ thuật)."
+    return "Có lỗi xảy ra. Hãy thử lại; nếu vẫn lỗi, báo David Dao (chi tiết ở mục Thông tin kỹ thuật)."
 
 
 # ---------------------------------------------------------------- jobs
