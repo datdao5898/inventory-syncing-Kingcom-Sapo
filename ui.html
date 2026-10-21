@@ -1,0 +1,642 @@
+<!doctype html>
+<html lang="vi"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Đồng bộ tồn kho KingCom</title>
+<style>
+:root {
+  --bg:#f7f7f8; --card:#fff; --text:#18181b; --text2:#3f3f46; --muted:#71717a; --faint:#a1a1aa; --line:#e4e4e7; --grid:#f0f0f2;
+  --side:#fff; --side-active:#f4f4f5;
+  --ink:#18181b; --ink-hover:#3f3f46;
+  --ok:#15803d; --warn:#a16207; --bad:#b91c1c;
+  --series:#3f3f46; --series-muted:#d4d4d8;
+  --radius:8px;
+}
+* { box-sizing:border-box; }
+html, body { margin:0; }
+body { font:14px/1.5 -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; background:var(--bg); color:var(--text); }
+a { color:var(--text); }
+button, .btn { font:inherit; font-weight:500; padding:7px 14px; border-radius:6px; border:1px solid var(--line); background:#fff; color:var(--text); cursor:pointer; text-decoration:none; display:inline-flex; align-items:center; gap:6px; white-space:nowrap; }
+button:hover, .btn:hover { background:#fafafa; border-color:#d4d4d8; }
+button.primary { background:var(--ink); border-color:var(--ink); color:#fff; }
+button.primary:hover { background:var(--ink-hover); }
+button:disabled { opacity:.45; cursor:not-allowed; }
+svg.i { width:16px; height:16px; flex:none; fill:none; stroke:currentColor; stroke-width:1.75; stroke-linecap:round; stroke-linejoin:round; }
+
+/* ---------- layout ---------- */
+.app { display:grid; grid-template-columns:240px 1fr; min-height:100vh; }
+aside { background:var(--side); border-right:1px solid var(--line); padding:18px 12px; display:flex; flex-direction:column; gap:20px; position:sticky; top:0; height:100vh; }
+.logo { display:flex; align-items:center; gap:10px; padding:0 8px; }
+.logo .mark { width:28px; height:28px; border-radius:6px; background:var(--ink); display:grid; place-items:center; color:#fff; font-weight:700; font-size:13px; }
+.logo b { display:block; font-size:14px; line-height:1.2; }
+.logo span { font-size:12px; color:var(--muted); }
+nav { display:flex; flex-direction:column; gap:2px; }
+nav a { display:flex; align-items:center; gap:10px; padding:7px 10px; border-radius:6px; color:var(--text2); text-decoration:none; white-space:nowrap; }
+nav a:hover { background:var(--side-active); }
+nav a.on { background:var(--side-active); color:var(--text); font-weight:600; }
+nav a svg { color:var(--muted); } nav a.on svg { color:var(--text); }
+nav .badge { margin-left:auto; color:var(--muted); font-size:12px; font-weight:400; font-variant-numeric:tabular-nums; }
+.side-foot { margin-top:auto; border-top:1px solid var(--line); padding:14px 8px 0; font-size:12.5px; color:var(--text2); }
+.side-foot .k { color:var(--muted); font-size:12px; }
+.side-foot b { color:var(--text) !important; font-weight:600; }
+.dot { display:inline-block; width:7px; height:7px; border-radius:50%; margin-right:6px; vertical-align:middle; background:var(--faint); }
+.dot.on { background:var(--ok); }
+
+main { min-width:0; }
+.top { display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap; padding:16px 28px; background:#fff; border-bottom:1px solid var(--line); position:sticky; top:0; z-index:5; }
+.top h1 { font-size:17px; font-weight:600; margin:0; }
+.top p { margin:2px 0 0; color:var(--muted); font-size:12.5px; }
+.top .actions { display:flex; gap:8px; flex-wrap:wrap; }
+.content { padding:24px 28px 48px; max-width:1280px; }
+.page { display:none; } .page.on { display:block; }
+
+/* ---------- cards ---------- */
+.card { background:var(--card); border:1px solid var(--line); border-radius:var(--radius); padding:18px; min-width:0; }
+.card-h { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; margin-bottom:14px; flex-wrap:wrap; }
+.card-h h2 { font-size:14px; font-weight:600; margin:0; }
+.card-h p { margin:2px 0 0; color:var(--muted); font-size:12.5px; }
+.muted { color:var(--muted); } .small { font-size:12.5px; }
+.grid { display:grid; gap:12px; margin-bottom:12px; }
+.g-kpi { grid-template-columns:repeat(5, minmax(0,1fr)); }
+.g-main { grid-template-columns:minmax(0,2fr) minmax(0,1fr); }
+
+/* status banner: nen trang, vien trai mau trang thai */
+.banner { display:flex; align-items:center; gap:12px; padding:12px 16px; border-radius:var(--radius); border:1px solid var(--line); border-left-width:3px; background:#fff; margin-bottom:12px; flex-wrap:wrap; }
+.banner .ic { display:grid; place-items:center; flex:none; color:var(--muted); }
+.banner .txt { flex:1; min-width:220px; }
+.banner b { display:block; font-size:14px; font-weight:600; }
+.banner span { font-size:13px; color:var(--muted); }
+.banner.ok { border-left-color:var(--ok); } .banner.ok .ic { color:var(--ok); }
+.banner.warn { border-left-color:var(--warn); } .banner.warn .ic { color:var(--warn); }
+.banner.bad { border-left-color:var(--bad); } .banner.bad .ic, .banner.bad b { color:var(--bad); }
+.banner.info { border-left-color:var(--faint); }
+.spinner { width:16px; height:16px; border:2px solid var(--line); border-top-color:var(--text2); border-radius:50%; animation:spin 1s linear infinite; }
+@keyframes spin { to { transform:rotate(360deg); } }
+
+/* kpi */
+.kpi { cursor:pointer; text-decoration:none; color:inherit; display:block; }
+.kpi:hover { border-color:#c4c4cc; }
+.kpi .lbl { color:var(--muted); font-size:12.5px; }
+.kpi .lbl .ico { display:none; }
+.kpi .val { font-size:26px; font-weight:600; line-height:1.2; margin-top:6px; font-variant-numeric:tabular-nums; }
+.kpi .sub { font-size:12px; color:var(--muted); margin-top:2px; }
+.kpi .pill { display:inline-block; font-size:12px; margin-top:6px; }
+.kpi .pill svg { display:none; }
+.pill.ok { color:var(--ok); } .pill.warn { color:var(--warn); } .pill.neutral { color:var(--muted); }
+
+/* chart */
+.chart { position:relative; }
+.chart svg { display:block; width:100%; height:280px; overflow:visible; }
+.chart .gl { stroke:var(--grid); stroke-width:1; }
+.chart .base { stroke:#d4d4d8; stroke-width:1; }
+.chart .ax { fill:var(--faint); font-size:11px; }
+.tip { position:absolute; pointer-events:none; background:#fff; color:var(--text); border:1px solid var(--line); font-size:12px; padding:7px 10px; border-radius:6px; white-space:nowrap; transform:translate(-50%, calc(-100% - 8px)); display:none; z-index:3; box-shadow:0 2px 8px rgba(0,0,0,.08); }
+.tip b { font-size:13px; }
+.legend { display:flex; gap:14px; flex-wrap:wrap; font-size:12px; color:var(--muted); }
+.legend i { display:inline-block; width:9px; height:9px; border-radius:2px; margin-right:6px; vertical-align:-1px; }
+
+/* per-location */
+.loc { padding:12px 0; border-top:1px solid var(--line); }
+.loc:first-of-type { border-top:0; padding-top:0; }
+.loc-h { display:flex; justify-content:space-between; align-items:baseline; }
+.loc-h .n { font-size:18px; font-weight:600; font-variant-numeric:tabular-nums; }
+.loc-stats { display:flex; gap:14px; font-size:12.5px; color:var(--muted); margin-top:2px; flex-wrap:wrap; }
+.up { color:var(--ok); } .down { color:var(--bad); }
+
+/* switch + controls */
+.switch { display:flex; align-items:center; gap:10px; cursor:pointer; }
+.switch input { display:none; }
+.switch .track { width:36px; height:20px; background:#d4d4d8; border-radius:20px; position:relative; transition:.15s; flex:none; }
+.switch .track::after { content:""; position:absolute; width:16px; height:16px; background:#fff; border-radius:50%; top:2px; left:2px; transition:.15s; }
+.switch input:checked + .track { background:var(--ink); }
+.switch input:checked + .track::after { left:18px; }
+select, input[type=search] { font:inherit; padding:6px 10px; border:1px solid var(--line); border-radius:6px; background:#fff; color:var(--text); }
+input[type=search] { flex:1; min-width:200px; }
+input[type=search]:focus, select:focus { outline:2px solid #e4e4e7; outline-offset:0; border-color:#a1a1aa; }
+.row { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+.seg { display:inline-flex; border:1px solid var(--line); border-radius:6px; overflow:hidden; flex-wrap:wrap; }
+.seg button { border:0; border-radius:0; border-right:1px solid var(--line); background:#fff; padding:6px 12px; color:var(--muted); }
+.seg button:last-child { border-right:0; }
+.seg button.on { background:var(--side-active); color:var(--text); font-weight:600; }
+.seg .n { margin-left:6px; color:var(--faint); font-weight:400; font-variant-numeric:tabular-nums; }
+
+/* table */
+.wrap { overflow-x:auto; margin:14px -18px -18px; border-top:1px solid var(--line); }
+table { width:100%; border-collapse:collapse; font-size:13.5px; }
+th, td { text-align:left; padding:9px 18px; border-bottom:1px solid var(--line); vertical-align:middle; }
+tbody tr:last-child td { border-bottom:0; }
+tbody tr:hover { background:#fafafa; }
+th { font-size:12px; font-weight:500; color:var(--muted); white-space:nowrap; background:#fafafa; }
+th.sort { cursor:pointer; user-select:none; } th.sort:hover { color:var(--text); }
+td.num, th.num { text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; }
+.sku { font-family:ui-monospace, Consolas, Menlo, monospace; font-size:12px; color:var(--muted); }
+.delta { font-variant-numeric:tabular-nums; }
+.tag { display:inline-flex; align-items:center; gap:6px; font-size:12.5px; white-space:nowrap; color:var(--text2); }
+.tag::before { content:""; width:7px; height:7px; border-radius:50%; background:var(--faint); }
+.tag.ok::before { background:var(--ok); } .tag.bad { color:var(--bad); } .tag.bad::before { background:var(--bad); }
+.tag svg { display:none; }
+.empty { text-align:center; color:var(--muted); padding:28px 10px !important; }
+.more { text-align:center; padding:12px; border-top:1px solid var(--line); margin:0 -18px -18px; }
+.more:empty { display:none; }
+.tip-box { background:#fafafa; border:1px solid var(--line); border-radius:6px; padding:10px 12px; font-size:13px; color:var(--text2); margin-bottom:14px; }
+details summary { cursor:pointer; color:var(--muted); list-style:none; display:flex; align-items:center; gap:8px; }
+details summary::-webkit-details-marker { display:none; }
+pre { background:#fafafa; color:var(--text2); border:1px solid var(--line); border-radius:6px; padding:12px; height:300px; overflow:auto; font:12px/1.55 ui-monospace, Consolas, Menlo, monospace; white-space:pre; margin:14px 0 0; }
+
+/* modal + toast */
+.modal-bg { position:fixed; inset:0; background:rgba(0,0,0,.35); display:none; align-items:center; justify-content:center; padding:16px; z-index:20; }
+.modal-bg.show { display:flex; }
+.modal { background:#fff; border-radius:10px; max-width:440px; width:100%; padding:20px; border:1px solid var(--line); }
+.modal h3 { margin:0 0 8px; font-size:16px; font-weight:600; }
+.modal p { margin:6px 0; color:var(--text2); }
+.modal .actions { display:flex; justify-content:flex-end; gap:8px; margin-top:18px; }
+.toast { position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:var(--ink); color:#fff; padding:10px 16px; border-radius:6px; display:none; z-index:30; max-width:90vw; font-size:13px; }
+
+/* responsive */
+@media (max-width:1180px) { .g-kpi { grid-template-columns:repeat(3, minmax(0,1fr)); } }
+@media (max-width:960px) {
+  .app { grid-template-columns:1fr; grid-template-rows:auto 1fr; }
+  aside { position:static; height:auto; flex-direction:row; align-items:center; padding:10px 14px; gap:12px; overflow-x:auto; border-right:0; border-bottom:1px solid var(--line); }
+  aside .logo span, .side-foot { display:none; }
+  nav { flex-direction:row; } nav a { padding:6px 10px; }
+  .g-main { grid-template-columns:1fr; }
+  .top { position:static; padding:14px 16px; } .content { padding:14px 16px 40px; }
+}
+@media (max-width:640px) {
+  .g-kpi { grid-template-columns:repeat(2, minmax(0,1fr)); }
+  .kpi .val { font-size:22px; }
+  .top .actions { width:100%; } .top .actions button { flex:1; justify-content:center; }
+  th, td { padding:9px 12px; } td:first-child { min-width:180px; }
+  .wrap, .more { margin-left:-18px; margin-right:-18px; }
+  .hide-sm { display:none; }
+  nav a span.t { display:none; } nav a.on span.t { display:inline; }
+}
+</style></head><body>
+
+<svg width="0" height="0" style="position:absolute">
+  <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></symbol>
+  <symbol id="i-diff" viewBox="0 0 24 24"><path d="M8 3v12M4 7l4-4 4 4M16 21V9M12 17l4 4 4-4"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></symbol>
+  <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M4 20h16"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 5 5 9-10"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 8v5M12 16.5v.5M10.3 3.9 2.5 17.5A2 2 0 0 0 4.2 20.5h15.6a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></symbol>
+  <symbol id="i-swap" viewBox="0 0 24 24"><path d="M4 8h13l-3-3M20 16H7l3 3"/></symbol>
+  <symbol id="i-box" viewBox="0 0 24 24"><path d="M21 8 12 3 3 8v8l9 5 9-5zM3 8l9 5 9-5M12 13v8"/></symbol>
+  <symbol id="i-web" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></symbol>
+  <symbol id="i-tag" viewBox="0 0 24 24"><path d="M20 12 12 20 4 12V4h8z"/><circle cx="8.5" cy="8.5" r="1.2"/></symbol>
+  <symbol id="i-link" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></symbol>
+  <symbol id="i-down" viewBox="0 0 24 24"><path d="M12 4v12M7 11l5 5 5-5M4 20h16"/></symbol>
+  <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></symbol>
+</svg>
+
+<div class="app">
+<aside>
+  <div class="logo"><div class="mark">K</div><div><b>KingCom</b><span>Đồng bộ tồn kho</span></div></div>
+  <nav>
+    <a href="#tong-quan" data-page="tong-quan"><svg class="i"><use href="#i-home"/></svg><span class="t">Tổng quan</span></a>
+    <a href="#san-pham" data-page="san-pham"><svg class="i"><use href="#i-diff"/></svg><span class="t">Sản phẩm lệch nhau</span><span class="badge" id="nav-badge" style="display:none"></span></a>
+    <a href="#lich-su" data-page="lich-su"><svg class="i"><use href="#i-clock"/></svg><span class="t">Lịch sử</span></a>
+  </nav>
+  <div class="side-foot">
+    <div class="k">Tự động cập nhật</div>
+    <div style="margin-top:6px"><span class="dot" id="side-dot"></span><b id="side-auto" style="color:#fff">Đang tắt</b></div>
+    <div id="side-next" style="color:var(--side-muted); margin-top:2px"></div>
+    <div class="k" style="margin-top:12px">Luồng đồng bộ</div>
+    <div style="margin-top:4px">Sapo Hà Nội → Kho Hà Nội<br>Sapo HCM → Kho Hồ Chí Minh</div>
+  </div>
+</aside>
+
+<main>
+  <div class="top">
+    <div><h1 id="page-title">Tổng quan</h1><p id="page-sub">Sapo → Haravan</p></div>
+    <div class="actions">
+      <button data-run="preview" title="So sánh tồn kho 2 bên. Chỉ xem, không thay đổi gì."><svg class="i"><use href="#i-search"/></svg>Kiểm tra tồn kho</button>
+      <button class="primary" data-run="apply" title="Cập nhật thật số tồn từ Sapo lên Haravan. Sẽ hỏi lại trước khi chạy."><svg class="i"><use href="#i-upload"/></svg>Cập nhật lên Haravan</button>
+    </div>
+  </div>
+
+  <div class="content">
+  <!-- ================= TONG QUAN ================= -->
+  <section class="page" id="page-tong-quan">
+    <div class="banner info" id="banner"><div class="ic"><div class="spinner"></div></div><div class="txt"><b>Đang tải...</b></div></div>
+
+    <div class="grid g-kpi" id="kpis"></div>
+
+    <div class="grid g-main">
+      <div class="card">
+        <div class="card-h">
+          <div><h2>Hoạt động gần đây</h2><p>Số thay đổi tồn kho phát hiện ở mỗi lần kiểm tra / cập nhật</p></div>
+          <div class="legend"><span><i style="background:var(--series)"></i>Đã cập nhật lên Haravan</span><span><i style="background:var(--series-muted)"></i>Chỉ kiểm tra</span></div>
+        </div>
+        <div class="chart" id="chart"><svg id="chart-svg"></svg><div class="tip" id="chart-tip"></div></div>
+      </div>
+
+      <div style="display:grid; gap:16px; align-content:start">
+        <div class="card">
+          <div class="card-h"><div><h2>Theo kho</h2><p id="loc-sub">Thay đổi trong lần chạy gần nhất</p></div></div>
+          <div id="locs"></div>
+        </div>
+        <div class="card">
+          <div class="card-h"><div><h2>Tự động cập nhật</h2><p>Hệ thống tự cập nhật lên Haravan, không cần ai bấm</p></div></div>
+          <label class="switch"><input type="checkbox" id="auto"><span class="track"></span><span id="auto-label">Đang tắt</span></label>
+          <div class="row" style="margin-top:12px">
+            <span class="small muted">Chu kỳ</span>
+            <select id="minutes">
+              <option value="15">15 phút</option><option value="30">30 phút</option><option value="60">1 giờ</option>
+              <option value="120">2 giờ</option><option value="240">4 giờ</option>
+            </select>
+            <span class="small muted" id="next"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" id="changes-card" style="margin-bottom:16px">
+      <div class="card-h">
+        <div><h2 id="changes-title">Chi tiết thay đổi</h2><p id="changes-sub"></p></div>
+        <a class="btn" id="report-link" href="#" style="display:none"><svg class="i"><use href="#i-down"/></svg>Tải Excel</a>
+      </div>
+      <div class="row">
+        <div class="seg" id="loc-seg"></div>
+        <input type="search" id="changes-q" placeholder="Tìm tên sản phẩm hoặc mã SKU...">
+      </div>
+      <div class="wrap"><table>
+        <thead><tr><th>Sản phẩm</th><th class="hide-sm">Kho</th><th class="num">Haravan đang có</th><th class="num" id="new-col">Sẽ thành</th><th class="num">Chênh lệch</th></tr></thead>
+        <tbody id="changes-body"></tbody>
+      </table></div>
+      <div class="more" id="changes-more"></div>
+    </div>
+
+    <details class="card">
+      <summary><svg class="i"><use href="#i-gear"/></svg>Thông tin kỹ thuật (dành cho người quản trị)</summary>
+      <div class="row" style="margin-top:14px"><button data-run="check">Kiểm tra kết nối Sapo / Haravan</button></div>
+      <pre id="log"></pre>
+    </details>
+  </section>
+
+  <!-- ================= SAN PHAM LECH NHAU ================= -->
+  <section class="page" id="page-san-pham">
+    <div class="grid g-kpi" id="cmp-kpis" style="grid-template-columns:repeat(4, minmax(0,1fr))"></div>
+    <div class="card">
+      <div class="card-h"><div><h2 id="cmp-title"></h2><p>Những sản phẩm này <b>không được đồng bộ tự động</b> vì mã SKU hai bên không khớp · Dữ liệu lúc <b id="cmp-at">...</b></p></div>
+        <button id="cmp-csv"><svg class="i"><use href="#i-down"/></svg>Tải Excel</button></div>
+      <div class="tip-box" id="cmp-tip"></div>
+      <div class="row">
+        <input type="search" id="cmp-q" placeholder="Tìm tên sản phẩm hoặc mã SKU...">
+        <label class="row small" style="gap:6px" id="cmp-instock-wrap"><input type="checkbox" id="cmp-instock"> Chỉ hiện sản phẩm còn hàng</label>
+        <span class="small muted" id="cmp-count"></span>
+      </div>
+      <div class="wrap"><table><thead id="cmp-head"></thead><tbody id="cmp-body"></tbody></table></div>
+      <div class="more" id="cmp-more"></div>
+    </div>
+  </section>
+
+  <!-- ================= LICH SU ================= -->
+  <section class="page" id="page-lich-su">
+    <div class="card">
+      <div class="card-h"><div><h2>Lịch sử chạy</h2><p>Các lần kiểm tra và cập nhật gần đây, cả bấm tay và tự động</p></div></div>
+      <div class="wrap"><table>
+        <thead><tr><th>Thời gian</th><th>Hành động</th><th>Trạng thái</th><th class="hide-sm">Kết quả</th><th></th></tr></thead>
+        <tbody id="history-body"></tbody>
+      </table></div>
+    </div>
+  </section>
+  </div>
+</main>
+</div>
+
+<div class="modal-bg" id="modal"><div class="modal">
+  <h3 id="modal-title"></h3><div id="modal-body"></div>
+  <div class="actions"><button id="modal-no">Huỷ</button><button class="primary" id="modal-yes">Đồng ý</button></div>
+</div></div>
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = s => document.querySelector(s);
+const $$ = s => document.querySelectorAll(s);
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const norm = s => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/gi, 'd').toLowerCase();
+const fmt = n => Number(n).toLocaleString('vi-VN');
+const icon = (id, cls) => '<svg class="i ' + (cls || '') + '"><use href="#i-' + id + '"/></svg>';
+let status = null, lastRunKey = null, lastRun = null, compare = null, history = [], wasRunning = false;
+
+/* ---------- helpers ---------- */
+function toast(msg) { const t = $('#toast'); t.textContent = msg; t.style.display = 'block'; clearTimeout(t._h); t._h = setTimeout(() => t.style.display = 'none', 4000); }
+function ask(title, html, yesLabel) {
+  return new Promise(res => {
+    $('#modal-title').textContent = title; $('#modal-body').innerHTML = html; $('#modal-yes').textContent = yesLabel || 'Đồng ý';
+    $('#modal').classList.add('show');
+    const done = v => { $('#modal').classList.remove('show'); res(v); };
+    $('#modal-yes').onclick = () => done(true); $('#modal-no').onclick = () => done(false);
+  });
+}
+async function api(path, opts) { const r = await fetch(path, opts); return {status: r.status, data: await r.json().catch(() => null)}; }
+
+/* ---------- navigation ---------- */
+const PAGES = {'tong-quan': 'Tổng quan', 'san-pham': 'Sản phẩm lệch nhau', 'lich-su': 'Lịch sử'};
+function showPage() {
+  let page = (location.hash || '#tong-quan').slice(1);
+  if (!PAGES[page]) page = 'tong-quan';
+  $$('.page').forEach(p => p.classList.toggle('on', p.id === 'page-' + page));
+  $$('nav a').forEach(a => a.classList.toggle('on', a.dataset.page === page));
+  $('#page-title').textContent = PAGES[page];
+  if (page === 'tong-quan') renderChart();  // svg an thi khong do duoc chieu rong
+  if (page === 'san-pham') loadCompare();
+  if (page === 'lich-su') renderHistory();
+  window.scrollTo(0, 0);
+}
+window.addEventListener('hashchange', showPage);
+
+/* ---------- actions ---------- */
+async function run(job) {
+  if (job === 'apply') {
+    const n = lastRun && !lastRun.applied ? lastRun.total : null;
+    const ok = await ask('Cập nhật tồn kho lên Haravan?',
+      '<p>Hệ thống sẽ lấy số tồn <b>mới nhất</b> từ Sapo và ghi đè lên web Haravan' +
+      (n ? ' (lần kiểm tra gần nhất có <b>' + fmt(n) + ' thay đổi</b>)' : '') + '.</p>' +
+      '<p class="small muted">Mẹo: bấm "Kiểm tra tồn kho" trước để xem danh sách thay đổi.</p>', 'Cập nhật ngay');
+    if (!ok) return;
+  }
+  const r = await api('/api/run/' + job, {method: 'POST'});
+  if (r.status === 409) toast('Hệ thống đang chạy việc khác, vui lòng đợi xong rồi bấm lại.');
+  refresh();
+}
+document.addEventListener('click', e => { const b = e.target.closest('[data-run]'); if (b && !b.disabled) run(b.dataset.run); });
+
+async function saveSettings(auto) {
+  const minutes = Number($('#minutes').value);
+  if (auto && !status.settings.auto) {
+    const ok = await ask('Bật tự động cập nhật?',
+      '<p>Hệ thống sẽ <b>tự cập nhật thật</b> lên Haravan mỗi ' + $('#minutes').selectedOptions[0].text + ', bắt đầu ngay bây giờ.</p>', 'Bật tự động');
+    if (!ok) { $('#auto').checked = false; return; }
+  }
+  await api('/api/settings', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({auto, minutes})});
+  toast(auto ? 'Đã bật tự động cập nhật' : 'Đã lưu cài đặt');
+  refresh();
+}
+$('#auto').onchange = () => saveSettings($('#auto').checked);
+$('#minutes').onchange = () => saveSettings($('#auto').checked);
+
+/* ---------- tong quan: banner ---------- */
+function renderBanner() {
+  const s = status, lr = s.last_run, b = $('#banner');
+  let cls, ic, title, text, action = '';
+  if (s.running) {
+    cls = 'info'; ic = '<div class="spinner"></div>'; title = 'Đang ' + s.running.toLowerCase() + '...';
+    text = 'Vui lòng đợi khoảng 30 – 60 giây. Có thể để trang này mở.';
+  } else if (s.error) {
+    cls = 'bad'; ic = icon('alert'); title = 'Lần chạy gần nhất bị lỗi'; text = esc(s.error);
+    action = '<button data-run="preview">Thử lại</button>';
+  } else if (!lr) {
+    cls = 'info'; ic = icon('search'); title = 'Chưa kiểm tra lần nào'; text = 'Bấm "Kiểm tra tồn kho" để xem tồn kho hai bên có khớp không.';
+    action = '<button class="primary" data-run="preview">Kiểm tra tồn kho</button>';
+  } else if (lr.total === 0) {
+    cls = 'ok'; ic = icon('check'); title = 'Tồn kho Haravan đang khớp với Sapo'; text = 'Kiểm tra lần cuối lúc ' + lr.time;
+  } else if (lr.applied) {
+    cls = 'ok'; ic = icon('check'); title = 'Đã cập nhật ' + fmt(lr.total) + ' thay đổi lên Haravan'; text = 'Lúc ' + lr.time;
+  } else {
+    cls = 'warn'; ic = icon('alert'); title = 'Có ' + fmt(lr.total) + ' thay đổi chưa cập nhật lên Haravan';
+    text = 'Phát hiện lúc ' + lr.time + ' · xem chi tiết bên dưới';
+    action = '<button class="primary" data-run="apply">' + icon('upload') + 'Cập nhật ' + fmt(lr.total) + ' thay đổi</button>';
+  }
+  b.className = 'banner ' + cls;
+  b.innerHTML = '<div class="ic">' + ic + '</div><div class="txt"><b>' + title + '</b><span>' + text + '</span></div>' + action;
+  $('#page-sub').textContent = 'Sapo → Haravan' + (lr ? ' · kiểm tra lần cuối ' + lr.time : '');
+}
+
+/* ---------- tong quan: kpi ---------- */
+function kpi(href, ic, label, value, sub, pill) {
+  return '<a class="card kpi" href="' + href + '"><div class="lbl"><span class="ico">' + icon(ic) + '</span>' + label + '</div>' +
+    '<div class="val">' + value + '</div>' + (sub ? '<div class="sub">' + sub + '</div>' : '') + (pill || '') + '</a>';
+}
+function renderKpis() {
+  const lr = status.last_run, c = lr ? lr.counts : null, dash = '–';
+  let pending = dash, pill = '';
+  if (lr) {
+    pending = fmt(lr.applied ? 0 : lr.total);
+    pill = !lr.applied && lr.total ? '<span class="pill warn">' + icon('alert') + 'Chờ cập nhật</span>'
+      : '<span class="pill ok">' + icon('check') + 'Đã khớp</span>';
+  }
+  $('#kpis').innerHTML =
+    kpi('#tong-quan', 'swap', 'Thay đổi chờ cập nhật', pending, lr && lr.applied ? 'Vừa cập nhật ' + fmt(lr.total) : 'Chưa đẩy lên Haravan', pill) +
+    kpi('#tong-quan', 'check', 'SKU đang đồng bộ', c ? fmt(c.matched) : dash, 'Có ở cả Sapo và Haravan') +
+    kpi('#san-pham:sapo_only', 'box', 'Có trên Sapo, chưa lên web', c ? fmt(c.sapo_only) : dash, 'SKU chưa có trên Haravan') +
+    kpi('#san-pham:haravan_only', 'web', 'Có trên web, thiếu Sapo', c ? fmt(c.haravan_only) : dash, 'Không được cập nhật tồn') +
+    kpi('#san-pham:haravan_no_sku', 'tag', 'Web chưa điền SKU', c ? fmt(c.no_sku) : dash, 'Cần bổ sung mã SKU');
+  const issues = c ? c.sapo_only + c.haravan_only + c.no_sku : 0;
+  $('#nav-badge').style.display = issues ? '' : 'none'; $('#nav-badge').textContent = fmt(issues);
+}
+document.addEventListener('click', e => {
+  const a = e.target.closest('a[href^="#san-pham:"]');
+  if (!a) return;
+  e.preventDefault(); cmpTab = a.getAttribute('href').split(':')[1]; cmpSort = null; cmpLimit = 100;
+  // Dang o san trang nay thi hash khong doi -> khong co hashchange, phai ve lai truc tiep
+  if (location.hash === '#san-pham') renderCompare(); else location.hash = '#san-pham';
+});
+
+/* ---------- tong quan: chart ---------- */
+function renderChart() {
+  const svg = $('#chart-svg'), tip = $('#chart-tip');
+  const runs = history.filter(h => h.ok && typeof h.total === 'number').slice(0, 24).reverse();
+  const W = svg.clientWidth || 600, H = 300, L = 40, R = 8, T = 10, B = 26;
+  if (!runs.length) {
+    svg.innerHTML = '<text x="' + W / 2 + '" y="' + H / 2 + '" text-anchor="middle" class="ax" style="font-size:13px">Chưa có dữ liệu — bấm "Kiểm tra tồn kho"</text>';
+    return;
+  }
+  svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+  const max = Math.max(...runs.map(r => r.total), 1);
+  // Muc chia "dep" (1, 2, 2.5, 5 x 10^n) cho 4 khoang
+  const rough = max / 4, mag = Math.pow(10, Math.floor(Math.log10(rough)));
+  const tick = [1, 1.5, 2, 2.5, 3, 4, 5, 10].map(m => m * mag).find(t => t >= rough), top = Math.max(tick * 4, 4);
+  const y = v => T + (H - T - B) * (1 - v / top);
+  const slot = (W - L - R) / runs.length, bw = Math.max(4, Math.min(28, slot * 0.6));
+  let g = '';
+  for (let i = 0; i <= 4; i++) {
+    const v = top * i / 4, yy = y(v);
+    g += (i ? '<line class="gl" x1="' + L + '" x2="' + (W - R) + '" y1="' + yy + '" y2="' + yy + '"/>' : '') +
+      '<text class="ax" x="' + (L - 6) + '" y="' + (yy + 4) + '" text-anchor="end">' + fmt(Math.round(v)) + '</text>';
+  }
+  runs.forEach((r, i) => {
+    const cx = L + slot * i + slot / 2, x = cx - bw / 2, y0 = y(0), h = Math.max(y0 - y(r.total), r.total ? 2 : 0);
+    const rad = Math.min(4, bw / 2, h);
+    const fill = r.applied ? 'var(--series)' : 'var(--series-muted)';
+    if (h > 0) g += '<path fill="' + fill + '" d="M' + x + ',' + y0 + 'V' + (y0 - h + rad) + 'Q' + x + ',' + (y0 - h) + ' ' + (x + rad) + ',' + (y0 - h) +
+      'H' + (x + bw - rad) + 'Q' + (x + bw) + ',' + (y0 - h) + ' ' + (x + bw) + ',' + (y0 - h + rad) + 'V' + y0 + 'Z"/>';
+    else g += '<circle cx="' + cx + '" cy="' + (y0 - 4) + '" r="3" fill="' + fill + '"/>';
+    g += '<rect data-i="' + i + '" x="' + (L + slot * i) + '" y="' + T + '" width="' + slot + '" height="' + (H - T - B) + '" fill="transparent"/>';
+  });
+  g += '<line class="base" x1="' + L + '" x2="' + (W - R) + '" y1="' + y(0) + '" y2="' + y(0) + '"/>';
+  // Nhan truc X: chi lan dau va lan cuoi de khong chong chu
+  g += '<text class="ax" x="' + L + '" y="' + (H - 6) + '" text-anchor="start">' + esc(runs[0].time.slice(0, 11)) + '</text>';
+  if (runs.length > 1) g += '<text class="ax" x="' + (W - R) + '" y="' + (H - 6) + '" text-anchor="end">' + esc(runs[runs.length - 1].time.slice(0, 11)) + '</text>';
+  svg.innerHTML = g;
+  svg.querySelectorAll('rect[data-i]').forEach(rc => {
+    rc.onmouseenter = () => {
+      const r = runs[rc.dataset.i], cx = L + slot * rc.dataset.i + slot / 2;
+      tip.innerHTML = '<b>' + fmt(r.total) + ' thay đổi</b><br>' + esc(r.action) + '<br><span style="opacity:.75">' + esc(r.time) + '</span>';
+      tip.style.left = (cx / W * 100) + '%'; tip.style.top = y(r.total) + 'px'; tip.style.display = 'block';
+      rc.setAttribute('fill', 'rgba(0,0,0,.035)');
+    };
+    rc.onmouseleave = () => { tip.style.display = 'none'; rc.setAttribute('fill', 'transparent'); };
+  });
+}
+window.addEventListener('resize', () => { clearTimeout(window._rz); window._rz = setTimeout(renderChart, 150); });
+
+/* ---------- tong quan: theo kho + bang thay doi ---------- */
+let locFilter = 'all', changesLimit = 50;
+function renderLocs() {
+  const ch = lastRun && lastRun.changes || [];
+  if (!lastRun) { $('#locs').innerHTML = '<p class="muted small">Chưa có dữ liệu</p>'; return; }
+  $('#loc-sub').textContent = (lastRun.applied ? 'Đã cập nhật' : 'Chờ cập nhật') + ' · ' + lastRun.time;
+  const names = [...new Set(ch.map(c => c.location))];
+  if (!names.length) { $('#locs').innerHTML = '<p class="small" style="margin:0"><span class="tag ok">' + icon('check') + 'Không có thay đổi</span></p>'; return; }
+  $('#locs').innerHTML = names.map(n => {
+    const rows = ch.filter(c => c.location === n);
+    const up = rows.filter(c => c.new > c.old).length, down = rows.length - up, zero = rows.filter(c => c.new === 0).length;
+    return '<div class="loc"><div class="loc-h"><span>' + esc(n) + '</span><span class="n">' + fmt(rows.length) + '</span></div>' +
+      '<div class="loc-stats"><span>' + fmt(up) + ' tăng</span><span>' + fmt(down) + ' giảm</span><span class="muted">' + fmt(zero) + ' về 0</span></div></div>';
+  }).join('');
+}
+function renderChanges() {
+  const ch = lastRun && lastRun.changes || [];
+  $('#changes-card').style.display = ch.length ? '' : 'none';
+  if (!ch.length) return;
+  $('#changes-title').textContent = lastRun.applied ? 'Các thay đổi đã cập nhật' : 'Các thay đổi sẽ được cập nhật';
+  $('#changes-sub').textContent = (lastRun.applied ? 'Đã cập nhật lúc ' : 'Kiểm tra lúc ') + lastRun.time + ' · ' + fmt(ch.length) + ' dòng';
+  $('#new-col').textContent = lastRun.applied ? 'Đã đổi thành' : 'Sẽ thành';
+  if (lastRun.report) { $('#report-link').style.display = ''; $('#report-link').href = '/reports/' + encodeURIComponent(lastRun.report); }
+  const locs = [...new Set(ch.map(c => c.location))];
+  $('#loc-seg').innerHTML = [['all', 'Tất cả', ch.length]].concat(locs.map(l => [l, l, ch.filter(c => c.location === l).length]))
+    .map(([k, l, n]) => '<button class="' + (k === locFilter ? 'on' : '') + '" data-loc="' + esc(k) + '">' + esc(l) + '<span class="n">' + fmt(n) + '</span></button>').join('');
+  $$('[data-loc]').forEach(b => b.onclick = () => { locFilter = b.dataset.loc; changesLimit = 50; renderChanges(); });
+  const q = norm($('#changes-q').value.trim());
+  const rows = ch.filter(c => (locFilter === 'all' || c.location === locFilter) && (!q || norm(c.sku + ' ' + c.title).includes(q)));
+  $('#changes-body').innerHTML = rows.slice(0, changesLimit).map(c => {
+    const d = c.new - c.old;
+    return '<tr><td>' + esc(c.title) + '<div class="sku">' + esc(c.sku) + '</div></td><td class="hide-sm">' + esc(c.location) + '</td>' +
+      '<td class="num">' + fmt(c.old) + '</td><td class="num"><b>' + fmt(c.new) + '</b></td>' +
+      '<td class="num"><span class="delta ' + (d > 0 ? 'up' : 'down') + '">' + (d > 0 ? '+' : '−') + fmt(Math.abs(d)) + '</span></td></tr>';
+  }).join('') || '<tr><td colspan="5" class="empty">Không tìm thấy sản phẩm phù hợp</td></tr>';
+  $('#changes-more').innerHTML = rows.length > changesLimit ? '<button id="changes-more-btn">Xem thêm ' + fmt(Math.min(200, rows.length - changesLimit)) + ' / còn ' + fmt(rows.length - changesLimit) + '</button>' : '';
+  if ($('#changes-more-btn')) $('#changes-more-btn').onclick = () => { changesLimit += 200; renderChanges(); };
+}
+$('#changes-q').oninput = () => { changesLimit = 50; renderChanges(); };
+
+/* ---------- refresh loop ---------- */
+async function loadHistory() { history = (await api('/api/history')).data || []; renderChart(); renderHistory(); }
+async function refresh() {
+  const r = await api('/api/status').catch(() => null);
+  if (!r || r.status !== 200) {
+    $('#banner').className = 'banner bad';
+    $('#banner').innerHTML = '<div class="ic">' + icon('alert') + '</div><div class="txt"><b>Mất kết nối tới máy chủ</b><span>Đang thử kết nối lại...</span></div>';
+    return;
+  }
+  status = r.data;
+  $$('[data-run]').forEach(b => b.disabled = !!status.running);
+  renderBanner(); renderKpis();
+  const lr = status.last_run, key = lr ? lr.time + lr.applied + lr.total : null;
+  if (key !== lastRunKey) {
+    lastRunKey = key;
+    lastRun = lr ? (await api('/api/last_run')).data : null;
+    renderLocs(); renderChanges();
+    compare = null;
+    if (location.hash.startsWith('#san-pham')) loadCompare();
+  }
+  if (wasRunning !== !!status.running || !history.length) loadHistory();
+  wasRunning = !!status.running;
+  if (document.activeElement !== $('#minutes')) { $('#auto').checked = status.settings.auto; $('#minutes').value = String(status.settings.minutes); }
+  const on = status.settings.auto;
+  $('#auto-label').textContent = on ? 'Đang bật' : 'Đang tắt';
+  $('#side-auto').textContent = on ? 'Đang bật · mỗi ' + $('#minutes').selectedOptions[0]?.text : 'Đang tắt';
+  $('#side-dot').classList.toggle('on', on);
+  const nx = on && status.next_auto_run ? 'Lần tới lúc ' + status.next_auto_run : '';
+  $('#next').textContent = nx; $('#side-next').textContent = nx;
+  const log = $('#log'), stick = log.scrollTop + log.clientHeight >= log.scrollHeight - 20;
+  log.textContent = status.logs.join('\n'); if (stick) log.scrollTop = log.scrollHeight;
+}
+
+/* ---------- san pham lech nhau ---------- */
+const CMP = {
+  sapo_only: {label: 'Có trên Sapo, chưa lên web', ic: 'box', src: 'sapo',
+    tip: '<b>Là gì:</b> sản phẩm có trong kho Sapo nhưng web Haravan chưa có sản phẩm nào mang mã SKU này. <b>Cần làm:</b> nếu muốn bán trên web, tạo sản phẩm trên Haravan (hoặc sửa SKU sản phẩm sẵn có) cho <b>trùng mã SKU</b> với Sapo. Số tồn hiển thị là tồn trên Sapo.'},
+  haravan_only: {label: 'Có trên web, thiếu Sapo', ic: 'web', src: 'haravan',
+    tip: '<b>Là gì:</b> sản phẩm trên web Haravan mang mã SKU không tồn tại trên Sapo, nên tồn kho <b>không được cập nhật</b> (có thể bán khi đã hết hàng). <b>Cần làm:</b> sửa SKU trên Haravan cho đúng mã Sapo, hoặc ẩn sản phẩm nếu không còn bán. Số tồn hiển thị là tồn trên Haravan.'},
+  haravan_no_sku: {label: 'Web chưa điền SKU', ic: 'tag', src: 'haravan',
+    tip: '<b>Là gì:</b> sản phẩm trên Haravan để trống mã SKU nên không thể đồng bộ. <b>Cần làm:</b> mở sản phẩm trên Haravan, điền SKU giống hệt mã trên Sapo.'},
+  haravan_dupes: {label: 'SKU trùng trên web', ic: 'swap', src: 'haravan',
+    tip: '<b>Là gì:</b> nhiều sản phẩm trên Haravan dùng chung 1 mã SKU, tất cả sẽ hiện cùng một số tồn. <b>Cần làm:</b> nếu đúng là cùng 1 món hàng bán ở nhiều trang (ví dụ phụ kiện kèm combo) thì giữ nguyên; nếu đặt nhầm mã thì sửa lại.'},
+};
+let cmpTab = 'sapo_only', cmpSort = null, cmpDir = 1, cmpLimit = 100;
+async function loadCompare() { if (!compare) compare = (await api('/api/compare')).data || {}; renderCompare(); }
+function cmpLink(r) {
+  if (CMP[cmpTab].src === 'sapo') return compare.sapo_base ? compare.sapo_base + '/products/' + r.product_id : '';
+  return compare.haravan_admin ? compare.haravan_admin + '/products/' + r.product_id : '';
+}
+function cmpRows() {
+  if (!compare || !compare[cmpTab]) return [];
+  const q = norm($('#cmp-q').value.trim());
+  let rows = compare[cmpTab].filter(r => (!q || norm(r.sku + ' ' + r.title).includes(q)) &&
+    (!$('#cmp-instock').checked || r.stock.reduce((a, b) => a + b, 0) > 0));
+  if (cmpSort !== null) rows = [...rows].sort((a, b) => {
+    const va = typeof cmpSort === 'number' ? a.stock[cmpSort] : a[cmpSort], vb = typeof cmpSort === 'number' ? b.stock[cmpSort] : b[cmpSort];
+    return (typeof va === 'number' ? va - vb : String(va).localeCompare(String(vb), 'vi')) * cmpDir;
+  });
+  return rows;
+}
+function renderCompare() {
+  if (!compare || !compare.generated_at) {
+    $('#cmp-kpis').innerHTML = ''; $('#cmp-at').textContent = 'chưa có'; $('#cmp-title').textContent = 'Chưa có dữ liệu';
+    $('#cmp-body').innerHTML = '<tr><td class="empty">Bấm "Kiểm tra tồn kho" ở góc trên để tải dữ liệu.</td></tr>'; return;
+  }
+  $('#cmp-at').textContent = compare.generated_at;
+  $('#cmp-kpis').innerHTML = Object.entries(CMP).map(([k, c]) => {
+    const n = compare[k].length, instock = k === 'haravan_no_sku' ? null : compare[k].filter(r => r.stock.reduce((a, b) => a + b, 0) > 0).length;
+    return '<a class="card kpi" href="#san-pham:' + k + '" style="' + (k === cmpTab ? 'border-color:var(--ink)' : '') + '">' +
+      '<div class="lbl"><span class="ico">' + icon(c.ic) + '</span>' + c.label + '</div><div class="val">' + fmt(n) + '</div>' +
+      '<div class="sub">' + (instock === null ? 'sản phẩm' : fmt(instock) + ' còn hàng') + '</div></a>';
+  }).join('');
+  $('#cmp-title').textContent = CMP[cmpTab].label;
+  $('#cmp-tip').innerHTML = CMP[cmpTab].tip;
+  const hasStock = cmpTab !== 'haravan_no_sku';
+  $('#cmp-instock-wrap').style.display = hasStock ? '' : 'none';
+  const cols = [['title', 'Sản phẩm', '']].concat(hasStock ? compare.locations.map((l, i) => [i, 'Tồn ' + l.replace(/^KingCom\s*/i, ''), 'num']) : []);
+  $('#cmp-head').innerHTML = '<tr>' + cols.map(([k, l, c]) => '<th class="sort ' + c + '" data-sort="' + k + '">' + esc(l) + (cmpSort === k ? (cmpDir > 0 ? ' ↑' : ' ↓') : '') + '</th>').join('') + '<th></th></tr>';
+  $$('[data-sort]').forEach(th => th.onclick = () => {
+    const k = /^\d+$/.test(th.dataset.sort) ? Number(th.dataset.sort) : th.dataset.sort;
+    cmpDir = cmpSort === k ? -cmpDir : (typeof k === 'number' ? -1 : 1); cmpSort = k; renderCompare();
+  });
+  const rows = cmpRows();
+  $('#cmp-count').textContent = 'Hiện ' + fmt(Math.min(rows.length, cmpLimit)) + ' / ' + fmt(rows.length);
+  $('#cmp-body').innerHTML = rows.slice(0, cmpLimit).map(r => {
+    const url = cmpLink(r);
+    const name = r.title ? esc(r.title) + '<div class="sku">' + (esc(r.sku) || 'chưa có SKU') + '</div>'
+      : '<b class="sku" style="color:var(--text);font-size:14px">' + esc(r.sku) + '</b><div class="muted small">Chưa xem được tên — bấm "Mở"</div>';
+    return '<tr><td>' + name + '</td>' + (hasStock ? r.stock.map(s => '<td class="num">' + fmt(s) + '</td>').join('') : '') +
+      '<td class="num">' + (url ? '<a class="btn" style="padding:5px 10px" href="' + esc(url) + '" target="_blank" rel="noopener">' + icon('link') + 'Mở</a>' : '') + '</td></tr>';
+  }).join('') || '<tr><td colspan="5" class="empty">Không có sản phẩm nào</td></tr>';
+  $('#cmp-more').innerHTML = rows.length > cmpLimit ? '<button id="cmp-more-btn">Xem thêm (còn ' + fmt(rows.length - cmpLimit) + ')</button>' : '';
+  if ($('#cmp-more-btn')) $('#cmp-more-btn').onclick = () => { cmpLimit += 200; renderCompare(); };
+}
+$('#cmp-q').oninput = () => { cmpLimit = 100; renderCompare(); };
+$('#cmp-instock').onchange = () => { cmpLimit = 100; renderCompare(); };
+$('#cmp-csv').onclick = () => {
+  if (!compare || !compare[cmpTab]) return;
+  const q = v => '"' + String(v ?? '').replace(/"/g, '""') + '"';
+  const head = ['SKU', 'Ten san pham'].concat(compare.locations.map(l => 'Ton ' + l), ['Link']);
+  const lines = [head.map(q).join(',')].concat(cmpRows().map(r => [r.sku, r.title, ...r.stock, cmpLink(r)].map(q).join(',')));
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob(['﻿' + lines.join('\r\n')], {type: 'text/csv;charset=utf-8'}));
+  a.download = CMP[cmpTab].label + '.csv'; a.click();
+};
+
+/* ---------- lich su ---------- */
+function renderHistory() {
+  $('#history-body').innerHTML = history.map(e => '<tr><td style="white-space:nowrap">' + esc(e.time) + '</td><td>' + esc(e.action) + '</td>' +
+    '<td><span class="tag ' + (e.ok ? 'ok' : 'bad') + '">' + icon(e.ok ? 'check' : 'alert') + (e.ok ? 'Thành công' : 'Lỗi') + '</span></td>' +
+    '<td class="hide-sm">' + esc(e.message) + '</td>' +
+    '<td class="num">' + (e.report ? '<a class="btn" style="padding:5px 10px" href="/reports/' + encodeURIComponent(e.report) + '">' + icon('down') + 'Excel</a>' : '') + '</td></tr>').join('')
+    || '<tr><td colspan="5" class="empty">Chưa có lịch sử</td></tr>';
+}
+
+showPage(); refresh(); setInterval(refresh, 3000);
+</script></body></html>

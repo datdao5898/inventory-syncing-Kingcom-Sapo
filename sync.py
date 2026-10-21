@@ -103,6 +103,7 @@ class Sapo:
     def __init__(self):
         store = require("SAPO_STORE").replace("https://", "").split(".")[0]
         self.base = f"https://{store}.mysapo.net/admin"
+        self.items = {}  # sku chuan hoa -> inventory_item dau tien (de lay product_id, sku goc)
         token = os.environ.get("SAPO_ACCESS_TOKEN", "").strip()
         if token:
             self.headers = {"X-Sapo-Access-Token": token}
@@ -140,6 +141,7 @@ class Sapo:
             if sku and item.get("tracked", True):
                 sku_of[item["variant_id"]] = sku
                 originals.setdefault(sku, []).append(item["sku"].strip())
+                self.items.setdefault(sku, item)
         self.duplicate_skus = {k: v for k, v in originals.items() if len(v) > 1}
         stock = {}
         for loc in location_ids:
@@ -149,6 +151,17 @@ class Sapo:
                 if sku:
                     per_sku[sku] = per_sku.get(sku, 0) + int(lv.get(self.qty_field) or 0)
         return stock
+
+    def variant_titles(self):
+        """{variant_id: ten}. Can quyen doc San pham; neu chua co quyen thi tra ve {}."""
+        try:
+            products = self.get_all("products.json", "products", {"fields": "id,title,variants"})
+        except RuntimeError as e:
+            if "HTTP 403" not in str(e):
+                raise
+            log.info("Sapo chua cap quyen doc San pham -> danh sach so sanh se khong co ten san pham Sapo")
+            return {}
+        return {v["id"]: f'{p.get("title")} - {v.get("title")}' for p in products for v in p.get("variants", [])}
 
 
 # ---------------------------------------------------------------- haravan
@@ -230,6 +243,49 @@ def write_report(rows):
     return path
 
 
+COMPARE_FILE = os.path.join(BASE_DIR, "reports", "compare_latest.json")
+LAST_RUN_FILE = os.path.join(BASE_DIR, "reports", "last_run.json")
+
+
+def save_last_run(data):
+    """Ket qua lan chay gan nhat (danh sach thay doi) cho giao dien web."""
+    with open(LAST_RUN_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False)
+
+
+def write_comparison(sapo, haravan, mapping, sapo_stock, hrv_stock, by_sku, no_sku, hrv_dupes):
+    """Luu danh sach so sanh 2 ben de trang web loc/tim kiem."""
+    haravan_admin = haravan.get("shop.json").get("shop", {}).get("myharavan_domain", "").rstrip("/")
+    haravan_admin = f"{haravan_admin}/admin" if haravan_admin else ""
+    sapo_skus = set().union(*(s.keys() for s in sapo_stock.values()))
+    titles = sapo.variant_titles()
+    sapo_locs, hrv_locs = list(mapping), list(mapping.values())
+    loc_names = {l["id"]: l.get("name", "") for l in sapo.locations()}
+
+    def hrv_row(v):
+        return {"sku": v["sku_raw"], "title": v["title"], "product_id": v["product_id"],
+                "stock": [hrv_stock.get((loc, v["variant_id"]), 0) for loc in hrv_locs]}
+
+    data = {
+        "generated_at": datetime.now().strftime("%H:%M %d/%m/%Y"),
+        "sapo_base": sapo.base,
+        "haravan_admin": haravan_admin,
+        "locations": [loc_names.get(loc, str(loc)) for loc in sapo_locs],
+        "sapo_only": [{
+            "sku": sapo.items[sku]["sku"].strip(),
+            "title": titles.get(sapo.items[sku]["variant_id"], ""),
+            "product_id": sapo.items[sku]["product_id"],
+            "stock": [sapo_stock[loc].get(sku, 0) for loc in sapo_locs],
+        } for sku in sorted(sapo_skus - set(by_sku))],
+        "haravan_only": [hrv_row(v) for sku in sorted(set(by_sku) - sapo_skus) for v in by_sku[sku]],
+        "haravan_no_sku": [{"sku": "", "title": v["title"], "product_id": v["product_id"], "stock": []}
+                           for v in no_sku],
+        "haravan_dupes": [hrv_row(v) for sku in sorted(hrv_dupes) for v in hrv_dupes[sku]],
+    }
+    with open(COMPARE_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False)
+
+
 def run_sync(apply, confirm=None, only_sku=None):
     """confirm(so_dong) -> bool: neu co, hoi truoc khi cap nhat that. only_sku: chi cap nhat 1 SKU (de thu).
     Tra ve so dong da/can cap nhat."""
@@ -270,7 +326,7 @@ def run_sync(apply, confirm=None, only_sku=None):
             old_qty = hrv_stock.get((hrv_loc, v["variant_id"]), 0)
             if new_qty == old_qty:
                 continue
-            loc_updates.append({**v, "new_qty": new_qty})
+            loc_updates.append({**v, "new_qty": new_qty, "old_qty": old_qty})
             rows.append([v["sku_raw"], "can_cap_nhat", sapo_loc, hrv_loc, new_qty, old_qty, v["title"]])
     rows += [[v["sku_raw"], "khong_co_tren_sapo", "", "", "", "", v["title"]]
              for sku in sorted(hrv_skus - sapo_skus) for v in by_sku[sku]]
@@ -297,7 +353,24 @@ def run_sync(apply, confirm=None, only_sku=None):
     untracked = sum(1 for u in updates.values() for v in u if not v["tracked"])
     if untracked:
         log.warning("%d dong thuoc variant Haravan chua bat 'quan ly ton kho'", untracked)
-    log.info("Bao cao: %s", write_report(rows))
+    report = write_report(rows)
+    log.info("Bao cao: %s", report)
+    write_comparison(sapo, haravan, mapping, sapo_stock, hrv_stock, by_sku, no_sku, hrv_dupes)
+    hrv_names = {l["id"]: l.get("name", "") for l in haravan.locations()}
+    last_run = {
+        "time": datetime.now().strftime("%H:%M %d/%m/%Y"),
+        "applied": False,
+        "total": total,
+        "report": os.path.basename(report),
+        "changes": [{"sku": u["sku_raw"], "title": u["title"], "location": hrv_names.get(loc, str(loc)),
+                     "old": u["old_qty"], "new": u["new_qty"]}
+                    for loc, loc_updates in updates.items() for u in loc_updates],
+        "counts": {"matched": len(sapo_skus & hrv_skus), "sapo_only": len(sapo_skus - hrv_skus),
+                   # dem theo san pham (variant) cho khop voi trang "San pham lech nhau"
+                   "haravan_only": sum(len(by_sku[s]) for s in hrv_skus - sapo_skus),
+                   "no_sku": len(no_sku), "dupes": len(hrv_dupes)},
+    }
+    save_last_run(last_run)
 
     if not total:
         log.info("Ton kho da khop, khong can cap nhat.")
@@ -308,6 +381,8 @@ def run_sync(apply, confirm=None, only_sku=None):
         for hrv_loc, loc_updates in updates.items():
             if loc_updates:
                 haravan.set_inventory(hrv_loc, loc_updates)
+        last_run["applied"] = True
+        save_last_run(last_run)
         log.info("Hoan tat dong bo %d dong sang Haravan.", total)
     else:
         log.info("Day la CHAY THU. Them --apply de cap nhat that.")
