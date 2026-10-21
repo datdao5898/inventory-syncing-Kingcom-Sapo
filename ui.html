@@ -357,7 +357,7 @@ async function run(job) {
       '<p class="small muted">Mẹo: bấm "Kiểm tra tồn kho" trước để xem danh sách thay đổi.</p>', 'Cập nhật ngay');
     if (!ok) return;
   }
-  const r = await api('/api/run/' + job, {method: 'POST'});
+  const r = await api('api/run/' + job, {method: 'POST'});
   if (r.status === 409) toast('Hệ thống đang chạy việc khác, vui lòng đợi xong rồi bấm lại.');
   refresh();
 }
@@ -370,7 +370,7 @@ async function saveSettings(auto) {
       '<p>Hệ thống sẽ <b>tự cập nhật thật</b> lên Haravan mỗi ' + $('#minutes').selectedOptions[0].text + ', bắt đầu ngay bây giờ.</p>', 'Bật tự động');
     if (!ok) { $('#auto').checked = false; return; }
   }
-  await api('/api/settings', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({auto, minutes})});
+  await api('api/settings', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({auto, minutes})});
   toast(auto ? 'Đã bật tự động cập nhật' : 'Đã lưu cài đặt');
   refresh();
 }
@@ -504,7 +504,7 @@ function renderChanges() {
   $('#changes-title').textContent = lastRun.applied ? 'Các thay đổi đã cập nhật' : 'Các thay đổi sẽ được cập nhật';
   $('#changes-sub').textContent = (lastRun.applied ? 'Đã cập nhật lúc ' : 'Kiểm tra lúc ') + lastRun.time + ' · ' + fmt(ch.length) + ' dòng';
   $('#new-col').textContent = lastRun.applied ? 'Đã đổi thành' : 'Sẽ thành';
-  if (lastRun.report) { $('#report-link').style.display = ''; $('#report-link').href = '/reports/' + encodeURIComponent(lastRun.report); }
+  if (lastRun.report) { $('#report-link').style.display = ''; $('#report-link').href = 'reports/' + encodeURIComponent(lastRun.report); }
   const locs = [...new Set(ch.map(c => c.location))];
   $('#loc-seg').innerHTML = [['all', 'Tất cả', ch.length]].concat(locs.map(l => [l, l, ch.filter(c => c.location === l).length]))
     .map(([k, l, n]) => '<button class="' + (k === locFilter ? 'on' : '') + '" data-loc="' + esc(k) + '">' + esc(l) + '<span class="n">' + fmt(n) + '</span></button>').join('');
@@ -523,9 +523,9 @@ function renderChanges() {
 $('#changes-q').oninput = () => { changesLimit = 50; renderChanges(); };
 
 /* ---------- refresh loop ---------- */
-async function loadHistory() { history = (await api('/api/history')).data || []; renderChart(); renderHistory(); }
+async function loadHistory() { history = (await api('api/history')).data || []; renderChart(); renderHistory(); }
 async function refresh() {
-  const r = await api('/api/status').catch(() => null);
+  const r = await api('api/status').catch(() => null);
   if (!r || r.status !== 200) {
     $('#banner').className = 'banner bad';
     $('#banner').innerHTML = '<div class="ic">' + icon('alert') + '</div><div class="txt"><b>Mất kết nối tới máy chủ</b><span>Đang thử kết nối lại...</span></div>';
@@ -537,7 +537,7 @@ async function refresh() {
   const lr = status.last_run, key = lr ? lr.time + lr.applied + lr.total : null;
   if (key !== lastRunKey) {
     lastRunKey = key;
-    lastRun = lr ? (await api('/api/last_run')).data : null;
+    lastRun = lr ? (await api('api/last_run')).data : null;
     renderLocs(); renderChanges();
     compare = null;
     if (location.hash.startsWith('#san-pham')) loadCompare();
@@ -567,7 +567,7 @@ const CMP = {
     tip: '<b>Là gì:</b> nhiều sản phẩm trên Haravan dùng chung 1 mã SKU, tất cả sẽ hiện cùng một số tồn. <b>Cần làm:</b> nếu đúng là cùng 1 món hàng bán ở nhiều trang (ví dụ phụ kiện kèm combo) thì giữ nguyên; nếu đặt nhầm mã thì sửa lại.'},
 };
 let cmpTab = 'sapo_only', cmpSort = null, cmpDir = 1, cmpLimit = 100;
-async function loadCompare() { if (!compare) compare = (await api('/api/compare')).data || {}; renderCompare(); }
+async function loadCompare() { if (!compare) compare = (await api('api/compare')).data || {}; renderCompare(); }
 function cmpLink(r) {
   if (CMP[cmpTab].src === 'sapo') return compare.sapo_base ? compare.sapo_base + '/products/' + r.product_id : '';
   return compare.haravan_admin ? compare.haravan_admin + '/products/' + r.product_id : '';
@@ -634,7 +634,7 @@ function renderHistory() {
   $('#history-body').innerHTML = history.map(e => '<tr><td style="white-space:nowrap">' + esc(e.time) + '</td><td>' + esc(e.action) + '</td>' +
     '<td><span class="tag ' + (e.ok ? 'ok' : 'bad') + '">' + icon(e.ok ? 'check' : 'alert') + (e.ok ? 'Thành công' : 'Lỗi') + '</span></td>' +
     '<td class="hide-sm">' + esc(e.message) + '</td>' +
-    '<td class="num">' + (e.report ? '<a class="btn" style="padding:5px 10px" href="/reports/' + encodeURIComponent(e.report) + '">' + icon('down') + 'Excel</a>' : '') + '</td></tr>').join('')
+    '<td class="num">' + (e.report ? '<a class="btn" style="padding:5px 10px" href="reports/' + encodeURIComponent(e.report) + '">' + icon('down') + 'Excel</a>' : '') + '</td></tr>').join('')
     || '<tr><td colspan="5" class="empty">Chưa có lịch sử</td></tr>';
 }
 

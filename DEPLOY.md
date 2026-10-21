@@ -110,18 +110,50 @@ curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:${PORT:-8081}/
 
 **Kết quả đúng:** `401` (web đang chạy và đòi đăng nhập).
 
-Mở cổng tường lửa nếu VPS dùng `ufw`:
+Sau đó chọn **một** trong hai cách đưa web ra ngoài:
+
+### Cách A (khuyến nghị cho VPS KingCom): qua nginx, có HTTPS
+
+Web chỉ nghe ở `127.0.0.1`, đi ra ngoài qua nginx sẵn có tại `https://ai.kingcom.com.vn/tonkho/`, không mở thêm cổng nào.
+
+1. Trong `$APP_DIR/.env`, đặt `WEB_HOST=127.0.0.1` (thêm dòng nếu chưa có), rồi chạy `systemctl restart sync-tonkho`.
+2. Tìm file cấu hình nginx có `server_name ai.kingcom.com.vn` và đang `listen 443`:
+   ```bash
+   grep -rl "ai.kingcom.com.vn" /etc/nginx/
+   ```
+   **Sao lưu file trước khi sửa:** `cp <file> <file>.bak-$(date +%F)`
+3. Thêm vào **bên trong** block `server { ... }` của 443 (không đụng tới các `location` có sẵn):
+   ```nginx
+   location = /tonkho { return 301 /tonkho/; }
+   location /tonkho/ {
+       proxy_pass http://127.0.0.1:8081/;   # dau "/" cuoi de bo tien to /tonkho
+       proxy_set_header Host $host;
+       proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+       proxy_set_header X-Forwarded-Proto $scheme;
+       proxy_read_timeout 180s;
+   }
+   ```
+4. Kiểm tra rồi nạp lại. **Chỉ reload khi `nginx -t` báo OK**, nếu lỗi thì khôi phục file `.bak`:
+   ```bash
+   sudo nginx -t && sudo systemctl reload nginx
+   curl -s -o /dev/null -w "%{http_code}
+" https://ai.kingcom.com.vn/tonkho/
+   ```
+   **Kết quả đúng:** `401`. Các app khác trên `ai.kingcom.com.vn` vẫn chạy bình thường.
+5. Không cần mở cổng tường lửa. Địa chỉ web là `https://ai.kingcom.com.vn/tonkho/` (nhớ có dấu `/` ở cuối).
+
+### Cách B: mở cổng trực tiếp (không mã hoá)
 
 ```bash
 sudo ufw allow ${PORT:-8081}/tcp
 ```
 
-Sau đó mở trình duyệt vào `http://<IP-VPS>:8081` và đăng nhập bằng `WEB_USER`/`WEB_PASSWORD`.
+Địa chỉ web là `http://<IP-VPS>:8081`. Mật khẩu đăng nhập đi qua mạng không được mã hoá.
 
 ## Bước 6. Báo cáo lại cho chủ dự án
 
 Gửi các thông tin sau. **Không gửi kèm key/token.**
-- Địa chỉ web: `http://<IP-VPS>:<PORT>`
+- Địa chỉ web: `https://ai.kingcom.com.vn/tonkho/` (Cách A) hoặc `http://<IP-VPS>:<PORT>` (Cách B)
 - `WEB_USER` và `WEB_PASSWORD` (gửi qua kênh riêng)
 - Kết quả Bước 3 (copy nguyên văn)
 - Dòng `Sapo: ... | Can cap nhat: N dong` ở Bước 4
@@ -153,17 +185,3 @@ journalctl -u sync-tonkho -f          # xem log trực tiếp
 | `$APP_DIR/settings.json` | Cài đặt tự động cập nhật |
 | `$APP_DIR/reports/` | Báo cáo CSV, lịch sử chạy, dữ liệu so sánh |
 | `$APP_DIR/logs/sync.log` | Nhật ký chi tiết |
-
-## (Tuỳ chọn) HTTPS với tên miền
-
-Nếu có tên miền trỏ về VPS, có thể dùng Caddy để có `https://` (mật khẩu được mã hoá khi đăng nhập):
-
-```bash
-sudo apt-get install -y caddy
-echo 'tonkho.tenmien.vn {
-    reverse_proxy 127.0.0.1:8081
-}' | sudo tee /etc/caddy/Caddyfile
-sudo systemctl reload caddy
-```
-
-Sau đó đặt `WEB_HOST=127.0.0.1` trong `.env`, chạy `systemctl restart sync-tonkho` và đóng cổng 8081 (`sudo ufw delete allow 8081/tcp`). Bước này cần chủ dự án đồng ý và cung cấp tên miền.
