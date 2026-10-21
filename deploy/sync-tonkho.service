@@ -4,11 +4,20 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
+User=synctonkho
+Group=synctonkho
 WorkingDirectory=/opt/sapo_haravan_sync
 ExecStart=/usr/bin/python3 /opt/sapo_haravan_sync/web.py
 Restart=always
 RestartSec=5
 Environment=PYTHONUNBUFFERED=1
+
+# Gioi han quyen: chi duoc ghi vao thu muc ung dung
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/opt/sapo_haravan_sync
 
 [Install]
 WantedBy=multi-user.target
