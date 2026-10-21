@@ -8,7 +8,9 @@ APP_USER=synctonkho
 SERVICE=sync-tonkho
 [ "$(id -u)" -eq 0 ] || { echo "Can chay bang root (sudo)."; exit 1; }
 
-# chay git bang user so huu thu muc (tranh loi "dubious ownership")
+# Tra lai quyen so huu (phong khi truoc do co nguoi chay git pull bang root),
+# roi chay git bang user so huu thu muc (tranh loi "dubious ownership")
+chown -R "$APP_USER:$APP_USER" "$APP_DIR"
 g() { runuser -u "$APP_USER" -- git -C "$APP_DIR" "$@"; }
 before=$(g rev-parse --short HEAD)
 g pull --ff-only
