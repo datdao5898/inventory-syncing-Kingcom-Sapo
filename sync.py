@@ -233,13 +233,18 @@ class Haravan:
 
 # ---------------------------------------------------------------- sync
 
-def write_report(rows):
+def write_report(updates, loc_names):
+    """Bao cao Excel: chi cac san pham can/da cap nhat ton (cac SKU lech nhau xem o trang web)."""
     os.makedirs(os.path.join(BASE_DIR, "reports"), exist_ok=True)
     path = os.path.join(BASE_DIR, "reports", f"sync_{datetime.now():%Y%m%d_%H%M%S}.csv")
     with open(path, "w", newline="", encoding="utf-8-sig") as f:
         w = csv.writer(f)
-        w.writerow(["sku", "trang_thai", "kho_sapo", "kho_haravan", "ton_sapo", "ton_haravan_cu", "ten_haravan"])
-        w.writerows(rows)
+        w.writerow(["Sản phẩm", "SKU", "Kho", "Tồn Haravan trước", "Tồn mới (theo Sapo)", "Chênh lệch"])
+        for loc, loc_updates in updates.items():
+            for u in sorted(loc_updates, key=lambda u: u["title"]):
+                d = u["new_qty"] - u["old_qty"]
+                w.writerow([u["title"], u["sku_raw"], loc_names.get(loc, str(loc)),
+                            u["old_qty"], u["new_qty"], f"+{d}" if d > 0 else d])
     return path
 
 
@@ -307,14 +312,7 @@ def run_sync(apply, confirm=None, only_sku=None):
     hrv_dupes = {sku: vs for sku, vs in by_sku.items() if len(vs) > 1}
     hrv_skus = set(by_sku)
     sapo_skus = set().union(*(s.keys() for s in sapo_stock.values()))
-    updates, rows = {}, []
-    # Canh bao du lieu (khong anh huong viec cap nhat)
-    rows += [["", "haravan_khong_co_sku", "", "", "", "", v["title"]] for v in no_sku]
-    for sku, vs in sorted(hrv_dupes.items()):
-        rows += [[v["sku_raw"], f"sku_trung_tren_haravan ({len(vs)} variant)", "", "", "", "", v["title"]]
-                 for v in vs]
-    for sku, raws in sorted(sapo.duplicate_skus.items()):
-        rows.append([sku, f"sku_trung_tren_sapo (cong don: {', '.join(raws)})", "", "", "", "", ""])
+    updates = {}
     for sapo_loc, hrv_loc in mapping.items():
         per_sku = sapo_stock[sapo_loc]
         loc_updates = updates.setdefault(hrv_loc, [])
@@ -327,21 +325,17 @@ def run_sync(apply, confirm=None, only_sku=None):
             if new_qty == old_qty:
                 continue
             loc_updates.append({**v, "new_qty": new_qty, "old_qty": old_qty})
-            rows.append([v["sku_raw"], "can_cap_nhat", sapo_loc, hrv_loc, new_qty, old_qty, v["title"]])
-    rows += [[v["sku_raw"], "khong_co_tren_sapo", "", "", "", "", v["title"]]
-             for sku in sorted(hrv_skus - sapo_skus) for v in by_sku[sku]]
-    rows += [[sku, "khong_co_tren_haravan", "", "", "", "", ""] for sku in sorted(sapo_skus - hrv_skus)]
 
     total = sum(len(u) for u in updates.values())
     log.info("Sapo: %d SKU | Haravan: %d SKU | Khop: %d SKU | Can cap nhat: %d dong",
              len(sapo_skus), len(hrv_skus), len(sapo_skus & hrv_skus), total)
     if no_sku:
-        log.warning("Haravan: %d variant KHONG CO SKU (bo qua, xem bao cao)", len(no_sku))
+        log.warning("Haravan: %d variant KHONG CO SKU (bo qua, xem trang San pham lech nhau)", len(no_sku))
     if hrv_dupes:
-        log.warning("Haravan: %d SKU bi trung tren %d variant - moi variant deu nhan cung so ton (xem bao cao)",
+        log.warning("Haravan: %d SKU bi trung tren %d variant - moi variant deu nhan cung so ton (xem trang San pham lech nhau)",
                     len(hrv_dupes), sum(len(vs) for vs in hrv_dupes.values()))
     if sapo.duplicate_skus:
-        log.warning("Sapo: %d SKU bi trung (khac hoa/thuong) - ton duoc cong don (xem bao cao)",
+        log.warning("Sapo: %d SKU bi trung (khac hoa/thuong) - ton duoc cong don",
                     len(sapo.duplicate_skus))
     for hrv_loc, loc_updates in updates.items():
         log.info("Kho Haravan %s: %d variant can cap nhat", hrv_loc, len(loc_updates))
@@ -353,10 +347,10 @@ def run_sync(apply, confirm=None, only_sku=None):
     untracked = sum(1 for u in updates.values() for v in u if not v["tracked"])
     if untracked:
         log.warning("%d dong thuoc variant Haravan chua bat 'quan ly ton kho'", untracked)
-    report = write_report(rows)
+    hrv_names = {l["id"]: l.get("name", "") for l in haravan.locations()}
+    report = write_report(updates, hrv_names)
     log.info("Bao cao: %s", report)
     write_comparison(sapo, haravan, mapping, sapo_stock, hrv_stock, by_sku, no_sku, hrv_dupes)
-    hrv_names = {l["id"]: l.get("name", "") for l in haravan.locations()}
     last_run = {
         "time": datetime.now().strftime("%H:%M %d/%m/%Y"),
         "applied": False,

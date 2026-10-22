@@ -18,7 +18,7 @@ python sync.py --apply            # cập nhật thật sang Haravan
 python sync.py --apply --loop 15  # tự đồng bộ mỗi 15 phút
 ```
 
-Báo cáo nằm trong `reports/`, có các SKU cần cập nhật, SKU chỉ có trên Sapo và SKU chỉ có trên Haravan. Log ghi vào `logs/sync.log`.
+Báo cáo nằm trong `reports/`, chỉ gồm các sản phẩm cần/đã cập nhật tồn (tên, SKU, kho, tồn trước, tồn mới, chênh lệch). Danh sách SKU lệch nhau giữa 2 bên xem ở trang "Sản phẩm lệch nhau" trên web. Log ghi vào `logs/sync.log`.
 
 ## Lưu ý
 - Sapo là nguồn chuẩn: tool không bao giờ ghi ngược về Sapo.
