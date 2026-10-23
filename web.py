@@ -13,12 +13,12 @@ import os
 import threading
 from datetime import datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import unquote, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 import sync
 
 SETTINGS_FILE = os.path.join(sync.BASE_DIR, "settings.json")
-REPORT_DIR = os.path.join(sync.BASE_DIR, "reports")
+REPORT_DIR = sync.REPORT_DIR
 HISTORY_FILE = os.path.join(REPORT_DIR, "history.json")
 KEEP_REPORTS = 50
 KEEP_HISTORY = 200
@@ -41,13 +41,25 @@ def save_json(path, data):
 class State:
     def __init__(self):
         self.lock = threading.Lock()
-        self.running = None  # ten viec dang chay
-        self.last_error = None  # loi de hieu cua lan chay gan nhat (None neu thanh cong)
+        self.running = None  # (ten viec dang chay, [key web])
+        self.last_error = {}  # key web -> loi de hieu cua lan chay gan nhat (khong co neu thanh cong)
         self.last_auto_run = None
         self.next_auto_run = None
         self.logs = collections.deque(maxlen=1000)
         self.settings = {"auto": False, "minutes": 30, **load_json(SETTINGS_FILE, {})}
         self.history = load_json(HISTORY_FILE, [])
+
+    def migrate(self):
+        """Du lieu cua ban cu (1 web) -> gan cho web dau tien. Goi sau khi doc .env."""
+        first = sync.site_keys()[0]
+        sync.migrate_legacy_reports()
+        if isinstance(self.settings["auto"], bool):
+            self.settings["auto"] = {first: True} if self.settings["auto"] else {}
+        for e in self.history:
+            if "site" not in e:
+                e["site"] = first
+                if e.get("report") and "/" not in e["report"]:
+                    e["report"] = f"{first}/{e['report']}"
 
     def add_history(self, entry):
         self.history.insert(0, entry)
@@ -78,11 +90,12 @@ def setup_logging():
 
 
 def cleanup_reports():
-    if not os.path.isdir(REPORT_DIR):
-        return
-    files = sorted(f for f in os.listdir(REPORT_DIR) if f.endswith(".csv"))
-    for f in files[:-KEEP_REPORTS]:
-        os.remove(os.path.join(REPORT_DIR, f))
+    for site in sync.get_sites():
+        if not os.path.isdir(site.dir):
+            continue
+        files = sorted(f for f in os.listdir(site.dir) if f.endswith(".csv"))
+        for f in files[:-KEEP_REPORTS]:
+            os.remove(os.path.join(site.dir, f))
 
 
 def friendly_error(e):
@@ -101,11 +114,12 @@ def friendly_error(e):
 
 # ---------------------------------------------------------------- jobs
 
+# Moi viec nhan danh sach key web, tra ve {key: so dong | None | exception}
 JOBS = {
-    "check": ("Kiểm tra kết nối", lambda: sync.check()),
-    "preview": ("Kiểm tra tồn kho", lambda: sync.run_sync(apply=False)),
-    "apply": ("Cập nhật lên Haravan", lambda: sync.run_sync(apply=True)),
-    "auto": ("Tự động cập nhật", lambda: sync.run_sync(apply=True)),
+    "check": ("Kiểm tra kết nối", lambda keys: sync.check(keys)),
+    "preview": ("Kiểm tra tồn kho", lambda keys: sync.run_sync(apply=False, sites=keys)),
+    "apply": ("Cập nhật lên Haravan", lambda keys: sync.run_sync(apply=True, sites=keys)),
+    "auto": ("Tự động cập nhật", lambda keys: sync.run_sync(apply=True, sites=keys)),
 }
 
 
@@ -119,34 +133,40 @@ def result_message(name, total):
     return f"Đã cập nhật {total} thay đổi lên Haravan"
 
 
-def start_job(name):
-    """Chay viec trong luong nen. Tra ve False neu dang co viec khac chay."""
+def start_job(name, keys):
+    """Chay viec cho cac web trong luong nen. Tra ve False neu dang co viec khac chay."""
     with state.lock:
         if state.running:
             return False
-        state.running = name
+        state.running = (name, keys)
     label, fn = JOBS[name]
 
     def worker():
-        sync.log.info("===== %s =====", label)
-        entry = {"time": datetime.now().strftime("%H:%M %d/%m/%Y"), "action": label, "ok": True,
-                 "report": None}
+        sites = sync.get_sites(keys)
         try:
-            total = fn()
-            state.last_error = None
-            entry["message"] = result_message(name, total)
-            if isinstance(total, int):
-                entry.update(total=total, applied=name in ("apply", "auto"))
-            if name != "check":
-                entry["report"] = load_json(sync.LAST_RUN_FILE, {}).get("report")
-        except BaseException as e:  # sync.require() dung sys.exit khi thieu cau hinh
-            sync.log.error("LỖI: %s", e)
-            state.last_error = friendly_error(e)
-            entry.update(ok=False, message=state.last_error)
-        finally:
-            entry["time"] = datetime.now().strftime("%H:%M %d/%m/%Y")
-            state.add_history(entry)
+            sync.log.info("===== %s: %s =====", label, ", ".join(s.name for s in sites))
+            try:
+                results = fn(keys)
+            except BaseException as e:  # loi chung (vd Sapo); sync.require() dung sys.exit khi thieu cau hinh
+                sync.log.error("LỖI: %s", e)
+                results = {k: e for k in keys}
+            # Moi web 1 dong lich su rieng
+            for site in sites:
+                r = results.get(site.key)
+                entry = {"time": datetime.now().strftime("%H:%M %d/%m/%Y"), "site": site.key, "action": label,
+                         "ok": True, "report": None}
+                if isinstance(r, BaseException):
+                    state.last_error[site.key] = friendly_error(r)
+                    entry.update(ok=False, message=state.last_error[site.key])
+                else:
+                    state.last_error.pop(site.key, None)
+                    entry["message"] = result_message(name, r)
+                    if isinstance(r, int):
+                        entry.update(total=r, applied=name in ("apply", "auto"),
+                                     report=load_json(site.last_run_file, {}).get("report"))
+                state.add_history(entry)
             cleanup_reports()
+        finally:
             with state.lock:
                 state.running = None
 
@@ -157,10 +177,11 @@ def start_job(name):
 def scheduler():
     while True:
         s = state.settings
-        if s["auto"]:
+        keys = [k for k in sync.site_keys() if s["auto"].get(k)]
+        if keys:
             minutes = max(float(s["minutes"]), 5)
             due = (state.last_auto_run or datetime.min) + timedelta(minutes=minutes)
-            if datetime.now() >= due and start_job("auto"):
+            if datetime.now() >= due and start_job("auto", keys):
                 state.last_auto_run = datetime.now()
                 due = state.last_auto_run + timedelta(minutes=minutes)
             state.next_auto_run = due
@@ -197,6 +218,11 @@ class Handler(BaseHTTPRequestHandler):
     def send_json(self, data, code=200):
         self.send(code, json.dumps(data, ensure_ascii=False))
 
+    def site(self):
+        """Web dang xem (?site=...), mac dinh web dau tien."""
+        key = parse_qs(urlparse(self.path).query).get("site", [""])[0]
+        return sync.Site(key if key in sync.site_keys() else sync.site_keys()[0])
+
     def guard(self):
         if self.authorized():
             return True
@@ -212,27 +238,35 @@ class Handler(BaseHTTPRequestHandler):
             with open(UI_FILE, "rb") as f:  # doc moi lan de sua giao dien khong can khoi dong lai
                 self.send(200, f.read(), "text/html; charset=utf-8")
         elif path == "/api/status":
-            last = load_json(sync.LAST_RUN_FILE, None)
+            site, running = self.site(), state.running
+            last = load_json(site.last_run_file, None)
             if last:
                 last.pop("changes", None)
             self.send_json({
-                "running": JOBS[state.running][0] if state.running else None,
-                "error": state.last_error,
+                "site": site.key,
+                "sites": [{"key": s.key, "name": s.name, "auto": bool(state.settings["auto"].get(s.key)),
+                           "error": s.key in state.last_error} for s in sync.get_sites()],
+                "running": JOBS[running[0]][0] if running else None,
+                "running_sites": [s.name for s in sync.get_sites(running[1])] if running else [],
+                "error": state.last_error.get(site.key),
                 "last_run": last,
-                "settings": state.settings,
+                "settings": {"auto": bool(state.settings["auto"].get(site.key)),
+                             "minutes": state.settings["minutes"]},
                 "next_auto_run": state.next_auto_run.strftime("%H:%M") if state.next_auto_run else None,
                 "logs": list(state.logs)[-300:],
             })
         elif path == "/api/last_run":
-            self.send_json(load_json(sync.LAST_RUN_FILE, {}))
+            self.send_json(load_json(self.site().last_run_file, {}))
         elif path == "/api/compare":
-            self.send_json(load_json(sync.COMPARE_FILE, {}))
+            self.send_json(load_json(self.site().compare_file, {}))
         elif path == "/api/history":
-            self.send_json(state.history)
+            key = self.site().key
+            self.send_json([e for e in state.history if e.get("site") == key])
         elif path.startswith("/reports/"):
-            name = os.path.basename(unquote(path))
-            full = os.path.join(REPORT_DIR, name)
-            if not name.endswith(".csv") or not os.path.isfile(full):
+            parts = unquote(path).split("/")  # /reports/<web>/<file>.csv
+            key, name = (parts[2], parts[3]) if len(parts) == 4 else ("", "")
+            full = os.path.join(REPORT_DIR, key, name)
+            if key not in sync.site_keys() or not name.endswith(".csv") or not os.path.isfile(full):
                 self.send(404, "Khong tim thay", "text/plain; charset=utf-8")
                 return
             with open(full, "rb") as f:
@@ -248,16 +282,21 @@ class Handler(BaseHTTPRequestHandler):
         length = int(self.headers.get("Content-Length") or 0)
         body = json.loads(self.rfile.read(length) or b"{}")
         if path.startswith("/api/run/") and path.rsplit("/", 1)[1] in ("check", "preview", "apply"):
-            ok = start_job(path.rsplit("/", 1)[1])
+            job = path.rsplit("/", 1)[1]
+            # Kiem tra ket noi: tat ca cac web; kiem tra / cap nhat ton: web dang xem
+            ok = start_job(job, sync.site_keys() if job == "check" else [self.site().key])
             self.send_json({"ok": ok}, 200 if ok else 409)
         elif path == "/api/settings":
+            site = self.site()
             minutes = max(float(body.get("minutes", state.settings["minutes"])), 5)
-            turning_on = bool(body.get("auto")) and not state.settings["auto"]
-            state.settings = {"auto": bool(body.get("auto")), "minutes": minutes}
+            auto = {**state.settings["auto"], site.key: bool(body.get("auto"))}
+            turning_on = auto[site.key] and not state.settings["auto"].get(site.key)
+            state.settings = {"auto": {k: v for k, v in auto.items() if v}, "minutes": minutes}
             save_json(SETTINGS_FILE, state.settings)
             if turning_on:
                 state.last_auto_run = None  # chay ngay khi vua bat
-            sync.log.info("Cài đặt: tự động %s, mỗi %g phút", "BẬT" if state.settings["auto"] else "TẮT", minutes)
+            sync.log.info("Cài đặt: tự động %s cho %s, mỗi %g phút",
+                          "BẬT" if auto[site.key] else "TẮT", site.name, minutes)
             wake_scheduler.set()
             self.send_json({"ok": True})
         else:
@@ -272,6 +311,7 @@ def main():
     if not os.environ.get("WEB_USER") or not os.environ.get("WEB_PASSWORD"):
         raise SystemExit("Can dat WEB_USER va WEB_PASSWORD trong .env truoc khi chay web")
     setup_logging()
+    state.migrate()
     threading.Thread(target=scheduler, daemon=True).start()
     host = os.environ.get("WEB_HOST", "0.0.0.0")
     port = int(os.environ.get("WEB_PORT", "8080"))

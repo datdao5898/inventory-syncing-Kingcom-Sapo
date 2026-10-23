@@ -172,6 +172,25 @@ sudo bash $APP_DIR/deploy/update.sh
 
 **Kết quả đúng:** `OK: <commit cũ> -> <commit mới>, web dang chay`. Các file `.env`, lịch sử và báo cáo được giữ nguyên.
 
+## Thêm web Haravan thứ hai (vd Newlite)
+
+Các web dùng chung tồn kho Sapo. Cấu hình KingCom cũ (`HARAVAN_TOKEN`, `LOCATION_MAP`) giữ nguyên.
+
+1. Chạy `update.sh` để lấy code mới (xem mục trên).
+2. Thêm vào cuối `$APP_DIR/.env` (`sudo nano $APP_DIR/.env`):
+   ```
+   SITES=kingcom,newlite
+   KINGCOM_NAME=KingCom
+   NEWLITE_NAME=Newlite
+   NEWLITE_HARAVAN_TOKEN=<token app riêng của Haravan Newlite>
+   NEWLITE_LOCATION_MAP=
+   ```
+3. Lấy ID kho của Newlite: `cd $APP_DIR && runuser -u synctonkho -- python3 sync.py check --site newlite`
+   → các dòng `Haravan Newlite kho: id=... ten=...`.
+4. Điền `NEWLITE_LOCATION_MAP=<id chi nhánh Sapo>:<id kho Newlite>,...` (ID chi nhánh Sapo xem ở dòng `Sapo chi nhanh`).
+5. Chạy thử (không ghi gì): `runuser -u synctonkho -- python3 sync.py --site newlite`, rồi `systemctl restart sync-tonkho`.
+6. Trên web, góc trái có nút chọn **KingCom / Newlite**. Tự động cập nhật bật/tắt riêng cho từng web — chỉ bật cho Newlite sau khi đã xem kỹ kết quả "Kiểm tra tồn kho".
+
 ## Lệnh thường dùng
 
 ```bash
@@ -187,5 +206,5 @@ journalctl -u sync-tonkho -f          # xem log trực tiếp
 |---|---|
 | `$APP_DIR/.env` | Key, token, mật khẩu web |
 | `$APP_DIR/settings.json` | Cài đặt tự động cập nhật |
-| `$APP_DIR/reports/` | Báo cáo CSV, lịch sử chạy, dữ liệu so sánh |
+| `$APP_DIR/reports/` | Lịch sử chạy (`history.json`); báo cáo CSV + dữ liệu so sánh của từng web trong `reports/<web>/` |
 | `$APP_DIR/logs/sync.log` | Nhật ký chi tiết |

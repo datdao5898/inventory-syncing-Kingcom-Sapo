@@ -146,7 +146,7 @@ class App:
         sync.run_sync(apply=True)
 
     def open_report(self):
-        reports = sorted(glob.glob(os.path.join(sync.BASE_DIR, "reports", "*.csv")))
+        reports = sorted(glob.glob(os.path.join(sync.REPORT_DIR, "*", "*.csv")), key=os.path.getmtime)
         if not reports:
             messagebox.showinfo(APP_TITLE, "Chưa có báo cáo. Bấm 'Chạy thử' trước.")
             return

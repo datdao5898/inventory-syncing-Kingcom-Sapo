@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="vi"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Đồng bộ tồn kho KingCom</title>
+<title>Đồng bộ tồn kho</title>
 <style>
 :root {
   --bg:#f7f7f8; --card:#fff; --text:#18181b; --text2:#3f3f46; --muted:#71717a; --faint:#a1a1aa; --line:#e4e4e7; --grid:#f0f0f2;
@@ -39,7 +39,12 @@ nav .badge { margin-left:auto; color:var(--muted); font-size:12px; font-weight:4
 .side-foot .k { color:var(--muted); font-size:12px; }
 .side-foot b { color:var(--text) !important; font-weight:600; }
 .dot { display:inline-block; width:7px; height:7px; border-radius:50%; margin-right:6px; vertical-align:middle; background:var(--faint); }
-.dot.on { background:var(--ok); }
+.dot.on { background:var(--ok); } .dot.bad { background:var(--bad); }
+.sites { display:flex; border:1px solid var(--line); border-radius:6px; overflow:hidden; margin:0 8px; flex:none; }
+.sites button { flex:1; justify-content:center; border:0; border-radius:0; border-right:1px solid var(--line); padding:6px 10px; color:var(--muted); }
+.sites button:last-child { border-right:0; }
+.sites button.on { background:var(--side-active); color:var(--text); font-weight:600; }
+.sites .dot { margin-right:0; }
 
 main { min-width:0; }
 .top { display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap; padding:16px 28px; background:#fff; border-bottom:1px solid var(--line); position:sticky; top:0; z-index:5; }
@@ -209,7 +214,8 @@ pre { background:#fafafa; color:var(--text2); border:1px solid var(--line); bord
 
 <div class="app">
 <aside>
-  <div class="logo"><div class="mark">K</div><div><b>KingCom</b><span>Đồng bộ tồn kho</span></div></div>
+  <div class="logo"><div class="mark" id="site-mark"></div><div><b id="site-name"></b><span>Đồng bộ tồn kho</span></div></div>
+  <div class="sites" id="sites" style="display:none" title="Chọn web Haravan để xem và cập nhật"></div>
   <nav>
     <a href="#tong-quan" data-page="tong-quan"><svg class="i"><use href="#i-home"/></svg><span class="t">Tổng quan</span></a>
     <a href="#san-pham" data-page="san-pham"><svg class="i"><use href="#i-diff"/></svg><span class="t">Sản phẩm lệch nhau</span><span class="badge" id="nav-badge" style="display:none"></span></a>
@@ -221,7 +227,7 @@ pre { background:#fafafa; color:var(--text2); border:1px solid var(--line); bord
     <div style="margin-top:6px"><span class="dot" id="side-dot"></span><b id="side-auto" style="color:#fff">Đang tắt</b></div>
     <div id="side-next" style="color:var(--side-muted); margin-top:2px"></div>
     <div class="k" style="margin-top:12px">Luồng đồng bộ</div>
-    <div style="margin-top:4px">Sapo Hà Nội → Kho Hà Nội<br>Sapo HCM → Kho Hồ Chí Minh</div>
+    <div style="margin-top:4px" id="side-flows"></div>
   </div>
 </aside>
 
@@ -327,7 +333,8 @@ pre { background:#fafafa; color:var(--text2); border:1px solid var(--line); bord
       <h2>Công cụ này làm gì?</h2>
       <p>Lấy <b>số tồn kho trên Sapo</b> rồi cập nhật sang <b>web Haravan</b>, để khách trên web thấy đúng số hàng còn lại.</p>
       <ul>
-        <li>Chi nhánh <b>Sapo Hà Nội</b> → <b>Kho Hà Nội</b> trên Haravan; <b>Sapo HCM</b> → <b>Kho Hồ Chí Minh</b>.</li>
+        <li>Mỗi chi nhánh Sapo được ghép với một kho trên web Haravan (xem mục <b>Luồng đồng bộ</b> ở góc trái).</li>
+        <li>Nếu có nhiều web (vd KingCom, Newlite), tất cả <b>dùng chung tồn kho Sapo</b>. Chọn web ở góc trái: các trang và nút <span class="k">Kiểm tra tồn kho</span> / <span class="k">Cập nhật lên Haravan</span> chỉ áp dụng cho web đang chọn.</li>
         <li>Sản phẩm hai bên được ghép với nhau bằng <b>mã SKU</b>. SKU phải giống nhau thì mới đồng bộ được.</li>
         <li>Sapo là số chuẩn. Công cụ <b>không bao giờ sửa Sapo</b>, không tạo/xoá sản phẩm, không đổi giá — chỉ sửa số tồn trên Haravan.</li>
         <li>Tồn âm trên Sapo (bán vượt tồn) được đưa lên Haravan là 0.</li>
@@ -366,7 +373,7 @@ pre { background:#fafafa; color:var(--text2); border:1px solid var(--line); bord
         <tbody>
           <tr><td><span class="k">Kiểm tra tồn kho</span></td><td>So sánh Sapo và Haravan, liệt kê sản phẩm bị lệch</td><td>Chỉ xem, <b>không thay đổi gì</b>. Bấm thoải mái.</td></tr>
           <tr><td><span class="k">Cập nhật lên Haravan</span></td><td>Lấy số mới nhất từ Sapo, ghi lên web Haravan</td><td><b>Thay đổi thật</b> trên web. Luôn hỏi lại trước khi chạy.</td></tr>
-          <tr><td><span class="k">Tự động cập nhật</span></td><td>Hệ thống tự cập nhật theo chu kỳ (15 phút – 4 giờ)</td><td>Chỉ David Dao bật/tắt.</td></tr>
+          <tr><td><span class="k">Tự động cập nhật</span></td><td>Hệ thống tự cập nhật theo chu kỳ (15 phút – 4 giờ)</td><td>Bật/tắt riêng cho từng web. Chỉ David Dao bật/tắt.</td></tr>
           <tr><td><span class="k">Tải Excel</span></td><td>Tải danh sách đang xem về máy</td><td>Chỉ xem.</td></tr>
           <tr><td><span class="k">Mở</span></td><td>Mở sản phẩm trên trang quản trị Sapo / Haravan để sửa</td><td>Mở trang khác, không tự sửa gì.</td></tr>
         </tbody>
@@ -396,7 +403,7 @@ pre { background:#fafafa; color:var(--text2); border:1px solid var(--line); bord
       <details><summary>Một sản phẩm trên web không bao giờ đổi số tồn?</summary>
         <p>Thường do SKU không khớp. Tìm mã đó ở trang <a href="#san-pham">Sản phẩm lệch nhau</a> — nếu có trong danh sách thì sửa SKU theo hướng dẫn ở trên.</p></details>
       <details><summary>Tồn trên web là 0 nhưng Sapo vẫn còn hàng?</summary>
-        <p>Kiểm tra đúng chi nhánh: tồn <b>Sapo Hà Nội</b> chỉ cập nhật vào <b>Kho Hà Nội</b>, Sapo HCM vào Kho HCM. Ngoài ra số lấy từ Sapo là số <b>có thể bán</b> (đã trừ hàng đang giữ cho đơn).</p></details>
+        <p>Kiểm tra đúng chi nhánh: mỗi chi nhánh Sapo chỉ cập nhật vào kho đã ghép với nó (xem <b>Luồng đồng bộ</b> ở góc trái). Ngoài ra số lấy từ Sapo là số <b>có thể bán</b> (đã trừ hàng đang giữ cho đơn).</p></details>
       <details><summary>Bấm nhầm "Cập nhật lên Haravan" có sao không?</summary>
         <p>Không sao. Công cụ chỉ chỉnh số tồn trên Haravan cho giống Sapo — đó cũng là việc nó vẫn làm hằng ngày. Sapo không bị đụng tới.</p></details>
       <details><summary>Trang báo "Mất kết nối tới máy chủ"?</summary>
@@ -427,7 +434,11 @@ const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;
 const norm = s => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/gi, 'd').toLowerCase();
 const fmt = n => Number(n).toLocaleString('vi-VN');
 const icon = (id, cls) => '<svg class="i ' + (cls || '') + '"><use href="#i-' + id + '"/></svg>';
-let status = null, lastRunKey = null, lastRun = null, compare = null, history = [], wasRunning = false;
+let status = null, lastRunKey, lastRun = null, compare = null, history = [], wasRunning = false;
+let site = (() => { try { return localStorage.getItem('site') || ''; } catch (e) { return ''; } })();
+const qs = () => '?site=' + encodeURIComponent(site);
+const reportHref = r => 'reports/' + r.split('/').map(encodeURIComponent).join('/');
+const siteName = () => (status.sites.find(s => s.key === status.site) || {}).name || '';
 
 /* ---------- helpers ---------- */
 function toast(msg) { const t = $('#toast'); t.textContent = msg; t.style.display = 'block'; clearTimeout(t._h); t._h = setTimeout(() => t.style.display = 'none', 4000); }
@@ -460,13 +471,13 @@ window.addEventListener('hashchange', showPage);
 async function run(job) {
   if (job === 'apply') {
     const n = lastRun && !lastRun.applied ? lastRun.total : null;
-    const ok = await ask('Cập nhật tồn kho lên Haravan?',
-      '<p>Hệ thống sẽ lấy số tồn <b>mới nhất</b> từ Sapo và ghi đè lên web Haravan' +
+    const ok = await ask('Cập nhật tồn kho lên web ' + siteName() + '?',
+      '<p>Hệ thống sẽ lấy số tồn <b>mới nhất</b> từ Sapo và ghi đè lên web Haravan <b>' + esc(siteName()) + '</b>' +
       (n ? ' (lần kiểm tra gần nhất có <b>' + fmt(n) + ' thay đổi</b>)' : '') + '.</p>' +
       '<p class="small muted">Mẹo: bấm "Kiểm tra tồn kho" trước để xem danh sách thay đổi.</p>', 'Cập nhật ngay');
     if (!ok) return;
   }
-  const r = await api('api/run/' + job, {method: 'POST'});
+  const r = await api('api/run/' + job + qs(), {method: 'POST'});
   if (r.status === 409) toast('Hệ thống đang chạy việc khác, vui lòng đợi xong rồi bấm lại.');
   refresh();
 }
@@ -475,11 +486,11 @@ document.addEventListener('click', e => { const b = e.target.closest('[data-run]
 async function saveSettings(auto) {
   const minutes = Number($('#minutes').value);
   if (auto && !status.settings.auto) {
-    const ok = await ask('Bật tự động cập nhật?',
-      '<p>Hệ thống sẽ <b>tự cập nhật thật</b> lên Haravan mỗi ' + $('#minutes').selectedOptions[0].text + ', bắt đầu ngay bây giờ.</p>', 'Bật tự động');
+    const ok = await ask('Bật tự động cập nhật cho ' + siteName() + '?',
+      '<p>Hệ thống sẽ <b>tự cập nhật thật</b> lên web ' + esc(siteName()) + ' mỗi ' + $('#minutes').selectedOptions[0].text + ', bắt đầu ngay bây giờ.</p>', 'Bật tự động');
     if (!ok) { $('#auto').checked = false; return; }
   }
-  await api('api/settings', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({auto, minutes})});
+  await api('api/settings' + qs(), {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({auto, minutes})});
   toast(auto ? 'Đã bật tự động cập nhật' : 'Đã lưu cài đặt');
   refresh();
 }
@@ -491,7 +502,8 @@ function renderBanner() {
   const s = status, lr = s.last_run, b = $('#banner');
   let cls, ic, title, text, action = '';
   if (s.running) {
-    cls = 'info'; ic = '<div class="spinner"></div>'; title = 'Đang ' + s.running.toLowerCase() + '...';
+    cls = 'info'; ic = '<div class="spinner"></div>';
+    title = 'Đang ' + s.running.toLowerCase() + (s.running_sites.length ? ' · ' + esc(s.running_sites.join(', ')) : '') + '...';
     text = 'Vui lòng đợi khoảng 30 – 60 giây. Có thể để trang này mở.';
   } else if (s.error) {
     cls = 'bad'; ic = icon('alert'); title = 'Lần chạy gần nhất bị lỗi'; text = esc(s.error);
@@ -510,7 +522,7 @@ function renderBanner() {
   }
   b.className = 'banner ' + cls;
   b.innerHTML = '<div class="ic">' + ic + '</div><div class="txt"><b>' + title + '</b><span>' + text + '</span></div>' + action;
-  $('#page-sub').textContent = 'Sapo → Haravan' + (lr ? ' · kiểm tra lần cuối ' + lr.time : '');
+  $('#page-sub').textContent = 'Sapo → Haravan ' + siteName() + (lr ? ' · kiểm tra lần cuối ' + lr.time : '');
 }
 
 /* ---------- tong quan: kpi ---------- */
@@ -613,7 +625,7 @@ function renderChanges() {
   $('#changes-title').textContent = lastRun.applied ? 'Các thay đổi đã cập nhật' : 'Các thay đổi sẽ được cập nhật';
   $('#changes-sub').textContent = (lastRun.applied ? 'Đã cập nhật lúc ' : 'Kiểm tra lúc ') + lastRun.time + ' · ' + fmt(ch.length) + ' dòng';
   $('#new-col').textContent = lastRun.applied ? 'Đã đổi thành' : 'Sẽ thành';
-  if (lastRun.report) { $('#report-link').style.display = ''; $('#report-link').href = 'reports/' + encodeURIComponent(lastRun.report); }
+  if (lastRun.report) { $('#report-link').style.display = ''; $('#report-link').href = reportHref(lastRun.report); }
   const locs = [...new Set(ch.map(c => c.location))];
   $('#loc-seg').innerHTML = [['all', 'Tất cả', ch.length]].concat(locs.map(l => [l, l, ch.filter(c => c.location === l).length]))
     .map(([k, l, n]) => '<button class="' + (k === locFilter ? 'on' : '') + '" data-loc="' + esc(k) + '">' + esc(l) + '<span class="n">' + fmt(n) + '</span></button>').join('');
@@ -632,21 +644,42 @@ function renderChanges() {
 $('#changes-q').oninput = () => { changesLimit = 50; renderChanges(); };
 
 /* ---------- refresh loop ---------- */
-async function loadHistory() { history = (await api('api/history')).data || []; renderChart(); renderHistory(); }
+async function loadHistory() { history = (await api('api/history' + qs())).data || []; renderChart(); renderHistory(); }
+function renderSites() {
+  const ss = status.sites, name = siteName();
+  $('#site-name').textContent = name; $('#site-mark').textContent = name.charAt(0).toUpperCase();
+  document.title = 'Đồng bộ tồn kho ' + name;
+  $('#sites').style.display = ss.length > 1 ? '' : 'none';
+  $('#sites').innerHTML = ss.map(s => '<button class="' + (s.key === status.site ? 'on' : '') + '" data-site="' + esc(s.key) + '">' +
+    (s.error ? '<span class="dot bad" title="Lần chạy gần nhất bị lỗi"></span>' : s.auto ? '<span class="dot on" title="Đang tự động cập nhật"></span>' : '') +
+    esc(s.name) + '</button>').join('');
+  const flows = status.last_run && status.last_run.flows;
+  $('#side-flows').innerHTML = flows ? flows.map(f => esc(f[0]) + ' → ' + esc(f[1])).join('<br>') : '<span class="muted">Hiện sau lần kiểm tra đầu tiên</span>';
+}
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-site]');
+  if (!b || b.dataset.site === site) return;
+  site = b.dataset.site;
+  try { localStorage.setItem('site', site); } catch (err) {}
+  lastRunKey = undefined; lastRun = null; compare = null; history = []; locFilter = 'all';
+  refresh();
+});
 async function refresh() {
-  const r = await api('api/status').catch(() => null);
+  const want = site, r = await api('api/status' + qs()).catch(() => null);
+  if (want !== site) return;  // vua doi web trong luc dang tai
   if (!r || r.status !== 200) {
     $('#banner').className = 'banner bad';
     $('#banner').innerHTML = '<div class="ic">' + icon('alert') + '</div><div class="txt"><b>Mất kết nối tới máy chủ</b><span>Đang thử kết nối lại...</span></div>';
     return;
   }
-  status = r.data;
+  status = r.data; site = status.site;
+  renderSites();
   $$('[data-run]').forEach(b => b.disabled = !!status.running);
   renderBanner(); renderKpis();
   const lr = status.last_run, key = lr ? lr.time + lr.applied + lr.total : null;
   if (key !== lastRunKey) {
     lastRunKey = key;
-    lastRun = lr ? (await api('api/last_run')).data : null;
+    lastRun = lr ? (await api('api/last_run' + qs())).data : null;
     renderLocs(); renderChanges();
     compare = null;
     if (location.hash.startsWith('#san-pham')) loadCompare();
@@ -676,7 +709,7 @@ const CMP = {
     tip: '<b>Là gì:</b> nhiều sản phẩm trên Haravan dùng chung 1 mã SKU, tất cả sẽ hiện cùng một số tồn. <b>Cần làm:</b> nếu đúng là cùng 1 món hàng bán ở nhiều trang (ví dụ phụ kiện kèm combo) thì giữ nguyên; nếu đặt nhầm mã thì sửa lại.'},
 };
 let cmpTab = 'sapo_only', cmpSort = null, cmpDir = 1, cmpLimit = 100;
-async function loadCompare() { if (!compare) compare = (await api('api/compare')).data || {}; renderCompare(); }
+async function loadCompare() { if (!compare) compare = (await api('api/compare' + qs())).data || {}; renderCompare(); }
 function cmpLink(r) {
   if (CMP[cmpTab].src === 'sapo') return compare.sapo_base ? compare.sapo_base + '/products/' + r.product_id : '';
   return compare.haravan_admin ? compare.haravan_admin + '/products/' + r.product_id : '';
@@ -743,7 +776,7 @@ function renderHistory() {
   $('#history-body').innerHTML = history.map(e => '<tr><td style="white-space:nowrap">' + esc(e.time) + '</td><td>' + esc(e.action) + '</td>' +
     '<td><span class="tag ' + (e.ok ? 'ok' : 'bad') + '">' + icon(e.ok ? 'check' : 'alert') + (e.ok ? 'Thành công' : 'Lỗi') + '</span></td>' +
     '<td class="hide-sm">' + esc(e.message) + '</td>' +
-    '<td class="num">' + (e.report ? '<a class="btn" style="padding:5px 10px" href="reports/' + encodeURIComponent(e.report) + '">' + icon('down') + 'Excel</a>' : '') + '</td></tr>').join('')
+    '<td class="num">' + (e.report ? '<a class="btn" style="padding:5px 10px" href="' + reportHref(e.report) + '">' + icon('down') + 'Excel</a>' : '') + '</td></tr>').join('')
     || '<tr><td colspan="5" class="empty">Chưa có lịch sử</td></tr>';
 }
 

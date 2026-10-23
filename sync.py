@@ -2,12 +2,14 @@
 
 Sapo la nguon chuan (master): ton cua moi SKU o mot chi nhanh Sapo se duoc
 ghi de (set) sang kho Haravan tuong ung (cau hinh LOCATION_MAP trong .env).
+Nhieu web Haravan co the dung chung 1 Sapo (cau hinh SITES trong .env).
 
 Cach dung:
     python sync.py check              # kiem tra ket noi + liet ke chi nhanh/kho 2 ben
     python sync.py                    # chay thu (dry-run), chi in ra chenh lech
     python sync.py --apply            # cap nhat that sang Haravan
     python sync.py --apply --loop 15  # tu dong dong bo moi 15 phut
+    python sync.py --site newlite     # chi chay cho 1 web
 """
 
 import argparse
@@ -16,6 +18,7 @@ import csv
 import json
 import logging
 import os
+import re
 import sys
 import time
 import urllib.error
@@ -24,6 +27,7 @@ import urllib.request
 from datetime import datetime
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+REPORT_DIR = os.path.join(BASE_DIR, "reports")
 HARAVAN_API = "https://apis.haravan.com/com"
 HARAVAN_BATCH_SIZE = 100  # Haravan khuyen nghi toi da 100 dong / request
 HARAVAN_INV_LOOKUP_SIZE = 50  # inventory_locations.json chi nhan toi da 50 variant
@@ -57,15 +61,62 @@ def require(name):
     return value
 
 
-def location_map():
-    """LOCATION_MAP=sapo_id:haravan_id,sapo_id:haravan_id -> {sapo_id: haravan_id}"""
-    mapping = {}
-    for pair in require("LOCATION_MAP").split(","):
-        sapo_id, _, haravan_id = pair.strip().partition(":")
-        if not sapo_id or not haravan_id:
-            sys.exit(f"LOCATION_MAP sai dinh dang o '{pair}', dung dang sapo_id:haravan_id")
-        mapping[int(sapo_id)] = int(haravan_id)
-    return mapping
+def site_keys():
+    """SITES=kingcom,newlite -> danh sach web Haravan cung lay ton tu Sapo (mac dinh chi kingcom)."""
+    keys = [k.strip().lower() for k in os.environ.get("SITES", "kingcom").split(",") if k.strip()]
+    for k in keys:
+        if not re.fullmatch(r"[a-z0-9_]+", k):
+            sys.exit(f"SITES sai dinh dang o '{k}', chi dung chu thuong, so, dau _")
+    return keys or ["kingcom"]
+
+
+def site_env(key, name, required=True, legacy=True):
+    """Cau hinh cua 1 web: <KEY>_<NAME>. Web dau tien duoc dung bien khong tien to (cau hinh cu, 1 web)."""
+    value = os.environ.get(f"{key.upper()}_{name}", "").strip()
+    if not value and legacy and key == site_keys()[0]:
+        value = os.environ.get(name, "").strip()
+    if not value and required:
+        sys.exit(f"Thieu cau hinh {key.upper()}_{name} trong file .env")
+    return value
+
+
+class Site:
+    """Mot web Haravan: token, bang ghep kho, thu muc bao cao rieng."""
+
+    def __init__(self, key):
+        self.key = key
+        self.name = site_env(key, "NAME", required=False, legacy=False) or key.capitalize()
+        self.dir = os.path.join(REPORT_DIR, key)
+        self.last_run_file = os.path.join(self.dir, "last_run.json")
+        self.compare_file = os.path.join(self.dir, "compare_latest.json")
+
+    def location_map(self):
+        """LOCATION_MAP=sapo_id:haravan_id,sapo_id:haravan_id -> {sapo_id: haravan_id}"""
+        mapping = {}
+        for pair in site_env(self.key, "LOCATION_MAP").split(","):
+            sapo_id, _, haravan_id = pair.strip().partition(":")
+            if not sapo_id or not haravan_id:
+                sys.exit(f"LOCATION_MAP cua {self.name} sai dinh dang o '{pair}', dung dang sapo_id:haravan_id")
+            mapping[int(sapo_id)] = int(haravan_id)
+        return mapping
+
+    def haravan(self):
+        return Haravan(site_env(self.key, "HARAVAN_TOKEN"))
+
+
+def get_sites(keys=None):
+    return [Site(k) for k in site_keys() if keys is None or k in keys]
+
+
+def migrate_legacy_reports():
+    """Ban cu (1 web) luu bao cao ngay trong reports/ -> chuyen vao reports/<web dau tien>/."""
+    if not os.path.isdir(REPORT_DIR):
+        return
+    target = os.path.join(REPORT_DIR, site_keys()[0])
+    for name in os.listdir(REPORT_DIR):
+        if name.endswith(".csv") or name in ("last_run.json", "compare_latest.json"):
+            os.makedirs(target, exist_ok=True)
+            os.replace(os.path.join(REPORT_DIR, name), os.path.join(target, name))
 
 
 # ---------------------------------------------------------------- http
@@ -130,7 +181,9 @@ class Sapo:
             page += 1
 
     def locations(self):
-        return self.get("locations.json").get("locations", [])
+        if not hasattr(self, "_locations"):
+            self._locations = self.get("locations.json").get("locations", [])
+        return self._locations
 
     def stock_by_sku(self, location_ids):
         """{location_id: {sku: qty}} (sku da chuan hoa). Dung inventory_items + inventory_levels nen chi can
@@ -154,6 +207,11 @@ class Sapo:
 
     def variant_titles(self):
         """{variant_id: ten}. Can quyen doc San pham; neu chua co quyen thi tra ve {}."""
+        if not hasattr(self, "_titles"):
+            self._titles = self._load_titles()
+        return self._titles
+
+    def _load_titles(self):
         try:
             products = self.get_all("products.json", "products", {"fields": "id,title,variants"})
         except RuntimeError as e:
@@ -167,8 +225,8 @@ class Sapo:
 # ---------------------------------------------------------------- haravan
 
 class Haravan:
-    def __init__(self):
-        self.headers = {"Authorization": f"Bearer {require('HARAVAN_TOKEN')}"}
+    def __init__(self, token):
+        self.headers = {"Authorization": f"Bearer {token}"}
 
     def get(self, path, params=None):
         url = f"{HARAVAN_API}/{path}"
@@ -233,10 +291,10 @@ class Haravan:
 
 # ---------------------------------------------------------------- sync
 
-def write_report(updates, loc_names):
+def write_report(site, updates, loc_names):
     """Bao cao Excel: chi cac san pham can/da cap nhat ton (cac SKU lech nhau xem o trang web)."""
-    os.makedirs(os.path.join(BASE_DIR, "reports"), exist_ok=True)
-    path = os.path.join(BASE_DIR, "reports", f"sync_{datetime.now():%Y%m%d_%H%M%S}.csv")
+    os.makedirs(site.dir, exist_ok=True)
+    path = os.path.join(site.dir, f"sync_{datetime.now():%Y%m%d_%H%M%S}.csv")
     with open(path, "w", newline="", encoding="utf-8-sig") as f:
         w = csv.writer(f)
         w.writerow(["Sản phẩm", "SKU", "Kho", "Tồn Haravan trước", "Tồn mới (theo Sapo)", "Chênh lệch"])
@@ -248,21 +306,18 @@ def write_report(updates, loc_names):
     return path
 
 
-COMPARE_FILE = os.path.join(BASE_DIR, "reports", "compare_latest.json")
-LAST_RUN_FILE = os.path.join(BASE_DIR, "reports", "last_run.json")
-
-
-def save_last_run(data):
+def save_last_run(site, data):
     """Ket qua lan chay gan nhat (danh sach thay doi) cho giao dien web."""
-    with open(LAST_RUN_FILE, "w", encoding="utf-8") as f:
+    os.makedirs(site.dir, exist_ok=True)
+    with open(site.last_run_file, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False)
 
 
-def write_comparison(sapo, haravan, mapping, sapo_stock, hrv_stock, by_sku, no_sku, hrv_dupes):
+def write_comparison(site, sapo, haravan, mapping, sapo_stock, hrv_stock, by_sku, no_sku, hrv_dupes):
     """Luu danh sach so sanh 2 ben de trang web loc/tim kiem."""
     haravan_admin = haravan.get("shop.json").get("shop", {}).get("myharavan_domain", "").rstrip("/")
     haravan_admin = f"{haravan_admin}/admin" if haravan_admin else ""
-    sapo_skus = set().union(*(s.keys() for s in sapo_stock.values()))
+    sapo_skus = set().union(*(sapo_stock[loc].keys() for loc in mapping))
     titles = sapo.variant_titles()
     sapo_locs, hrv_locs = list(mapping), list(mapping.values())
     loc_names = {l["id"]: l.get("name", "") for l in sapo.locations()}
@@ -287,18 +342,15 @@ def write_comparison(sapo, haravan, mapping, sapo_stock, hrv_stock, by_sku, no_s
                            for v in no_sku],
         "haravan_dupes": [hrv_row(v) for sku in sorted(hrv_dupes) for v in hrv_dupes[sku]],
     }
-    with open(COMPARE_FILE, "w", encoding="utf-8") as f:
+    os.makedirs(site.dir, exist_ok=True)
+    with open(site.compare_file, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False)
 
 
-def run_sync(apply, confirm=None, only_sku=None):
-    """confirm(so_dong) -> bool: neu co, hoi truoc khi cap nhat that. only_sku: chi cap nhat 1 SKU (de thu).
-    Tra ve so dong da/can cap nhat."""
-    mapping = location_map()
-    sapo, haravan = Sapo(), Haravan()
-
-    log.info("Dang tai ton kho Sapo (%s)...", sapo.qty_field)
-    sapo_stock = sapo.stock_by_sku(list(mapping))
+def plan_site(site, mapping, sapo, sapo_stock, only_sku):
+    """Tinh cac dong can cap nhat cho 1 web, ghi bao cao + du lieu so sanh. Chua ghi gi len Haravan."""
+    log.info("----- Web %s -----", site.name)
+    haravan = site.haravan()
     log.info("Dang tai san pham Haravan...")
     all_variants = haravan.variants()
     no_sku = [v for v in all_variants if not v["sku"]]
@@ -311,7 +363,7 @@ def run_sync(apply, confirm=None, only_sku=None):
         by_sku.setdefault(v["sku"], []).append(v)
     hrv_dupes = {sku: vs for sku, vs in by_sku.items() if len(vs) > 1}
     hrv_skus = set(by_sku)
-    sapo_skus = set().union(*(s.keys() for s in sapo_stock.values()))
+    sapo_skus = set().union(*(sapo_stock[loc].keys() for loc in mapping))
     updates = {}
     for sapo_loc, hrv_loc in mapping.items():
         per_sku = sapo_stock[sapo_loc]
@@ -334,28 +386,26 @@ def run_sync(apply, confirm=None, only_sku=None):
     if hrv_dupes:
         log.warning("Haravan: %d SKU bi trung tren %d variant - moi variant deu nhan cung so ton (xem trang San pham lech nhau)",
                     len(hrv_dupes), sum(len(vs) for vs in hrv_dupes.values()))
-    if sapo.duplicate_skus:
-        log.warning("Sapo: %d SKU bi trung (khac hoa/thuong) - ton duoc cong don",
-                    len(sapo.duplicate_skus))
     for hrv_loc, loc_updates in updates.items():
         log.info("Kho Haravan %s: %d variant can cap nhat", hrv_loc, len(loc_updates))
         for u in loc_updates[:15]:
-            old = hrv_stock.get((hrv_loc, u["variant_id"]), 0)
-            log.info("  %-25s %5s -> %5s  %s", u["sku_raw"], old, u["new_qty"], u["title"])
+            log.info("  %-25s %5s -> %5s  %s", u["sku_raw"], u["old_qty"], u["new_qty"], u["title"])
         if len(loc_updates) > 15:
             log.info("  ... va %d dong khac (xem file bao cao)", len(loc_updates) - 15)
     untracked = sum(1 for u in updates.values() for v in u if not v["tracked"])
     if untracked:
         log.warning("%d dong thuoc variant Haravan chua bat 'quan ly ton kho'", untracked)
     hrv_names = {l["id"]: l.get("name", "") for l in haravan.locations()}
-    report = write_report(updates, hrv_names)
+    sapo_names = {l["id"]: l.get("name", "") for l in sapo.locations()}
+    report = write_report(site, updates, hrv_names)
     log.info("Bao cao: %s", report)
-    write_comparison(sapo, haravan, mapping, sapo_stock, hrv_stock, by_sku, no_sku, hrv_dupes)
+    write_comparison(site, sapo, haravan, mapping, sapo_stock, hrv_stock, by_sku, no_sku, hrv_dupes)
     last_run = {
         "time": datetime.now().strftime("%H:%M %d/%m/%Y"),
         "applied": False,
         "total": total,
-        "report": os.path.basename(report),
+        "report": f"{site.key}/{os.path.basename(report)}",
+        "flows": [[sapo_names.get(s, str(s)), hrv_names.get(h, str(h))] for s, h in mapping.items()],
         "changes": [{"sku": u["sku_raw"], "title": u["title"], "location": hrv_names.get(loc, str(loc)),
                      "old": u["old_qty"], "new": u["new_qty"]}
                     for loc, loc_updates in updates.items() for u in loc_updates],
@@ -364,32 +414,86 @@ def run_sync(apply, confirm=None, only_sku=None):
                    "haravan_only": sum(len(by_sku[s]) for s in hrv_skus - sapo_skus),
                    "no_sku": len(no_sku), "dupes": len(hrv_dupes)},
     }
-    save_last_run(last_run)
+    save_last_run(site, last_run)
+    return {"site": site, "haravan": haravan, "updates": updates, "total": total, "last_run": last_run}
 
+
+def run_sync(apply, confirm=None, only_sku=None, sites=None):
+    """confirm(so_dong) -> bool: neu co, hoi truoc khi cap nhat that. only_sku: chi cap nhat 1 SKU (de thu).
+    sites: danh sach key web (mac dinh tat ca). Tai Sapo 1 lan roi xu ly tung web.
+    Tra ve {key: so dong da/can cap nhat}; web bi loi -> exception (cac web khac van chay tiep)."""
+    migrate_legacy_reports()
+    targets = get_sites(sites)
+    results, mappings = {}, {}
+    for site in targets:
+        try:
+            mappings[site.key] = site.location_map()
+        except (Exception, SystemExit) as e:
+            log.error("[%s] LỖI: %s", site.name, e)
+            results[site.key] = e
+    if not mappings:
+        return results
+
+    sapo = Sapo()
+    log.info("Dang tai ton kho Sapo (%s)...", sapo.qty_field)
+    sapo_stock = sapo.stock_by_sku(sorted({loc for m in mappings.values() for loc in m}))
+    if sapo.duplicate_skus:
+        log.warning("Sapo: %d SKU bi trung (khac hoa/thuong) - ton duoc cong don",
+                    len(sapo.duplicate_skus))
+
+    plans = []
+    for site in targets:
+        if site.key in mappings:
+            try:
+                plans.append(plan_site(site, mappings[site.key], sapo, sapo_stock, only_sku))
+                results[site.key] = plans[-1]["total"]
+            except (Exception, SystemExit) as e:
+                log.error("[%s] LỖI: %s", site.name, e)
+                results[site.key] = e
+
+    total = sum(p["total"] for p in plans)
     if not total:
         log.info("Ton kho da khop, khong can cap nhat.")
     elif apply and confirm and not confirm(total):
         log.info("Da huy, khong cap nhat gi.")
-        return 0
+        return {key: 0 if isinstance(r, int) else r for key, r in results.items()}
     elif apply:
-        for hrv_loc, loc_updates in updates.items():
-            if loc_updates:
-                haravan.set_inventory(hrv_loc, loc_updates)
-        last_run["applied"] = True
-        save_last_run(last_run)
-        log.info("Hoan tat dong bo %d dong sang Haravan.", total)
+        for p in plans:
+            if not p["total"]:
+                continue
+            site = p["site"]
+            try:
+                log.info("Dang cap nhat web %s...", site.name)
+                for hrv_loc, loc_updates in p["updates"].items():
+                    if loc_updates:
+                        p["haravan"].set_inventory(hrv_loc, loc_updates)
+                p["last_run"]["applied"] = True
+                save_last_run(site, p["last_run"])
+                log.info("Hoan tat dong bo %d dong sang Haravan %s.", p["total"], site.name)
+            except Exception as e:
+                log.error("[%s] LỖI khi cap nhat: %s", site.name, e)
+                results[site.key] = e
     else:
         log.info("Day la CHAY THU. Them --apply de cap nhat that.")
-    return total
+    return results
 
 
-def check():
-    sapo, haravan = Sapo(), Haravan()
+def check(sites=None):
+    """Liet ke chi nhanh Sapo + kho cua tung web Haravan. Tra ve {key: None hoac exception}."""
+    sapo = Sapo()
     for l in sapo.locations():
         log.info("Sapo chi nhanh:  id=%s  ten=%s", l["id"], l.get("name"))
-    for l in haravan.locations():
-        log.info("Haravan kho:     id=%s  ten=%s", l["id"], l.get("name"))
-    log.info("Ket noi OK")
+    results = {}
+    for site in get_sites(sites):
+        try:
+            for l in site.haravan().locations():
+                log.info("Haravan %s kho:  id=%s  ten=%s", site.name, l["id"], l.get("name"))
+            results[site.key] = None
+        except (Exception, SystemExit) as e:
+            log.error("[%s] LỖI: %s", site.name, e)
+            results[site.key] = e
+    log.info("Ket noi OK" if not any(results.values()) else "Co web bi loi ket noi (xem o tren)")
+    return results
 
 
 def main():
@@ -398,6 +502,7 @@ def main():
     parser.add_argument("--apply", action="store_true", help="cap nhat that (mac dinh chi chay thu)")
     parser.add_argument("--loop", type=float, metavar="PHUT", help="lap lai moi N phut")
     parser.add_argument("--sku", help="chi cap nhat 1 SKU (de chay thu tren 1 san pham)")
+    parser.add_argument("--site", help="chi chay cho 1 web (key trong SITES, vd newlite)")
     args = parser.parse_args()
 
     sys.stdout.reconfigure(encoding="utf-8")  # console Windows mac dinh khong in duoc tieng Viet
@@ -409,13 +514,19 @@ def main():
                   logging.FileHandler(os.path.join(BASE_DIR, "logs", "sync.log"), encoding="utf-8")],
     )
     load_env(os.path.join(BASE_DIR, ".env"))
+    sites = [args.site.lower()] if args.site else None
+    if sites and sites[0] not in site_keys():
+        sys.exit(f"Khong co web '{args.site}' trong SITES ({', '.join(site_keys())})")
 
     if args.command == "check":
-        check()
+        if any(check(sites).values()):
+            sys.exit(1)
         return
     while True:
         try:
-            run_sync(args.apply, only_sku=args.sku)
+            results = run_sync(args.apply, only_sku=args.sku, sites=sites)
+            if not args.loop and any(isinstance(r, BaseException) for r in results.values()):
+                sys.exit(1)
         except Exception as e:
             if not args.loop:
                 raise

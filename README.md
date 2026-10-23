@@ -24,5 +24,6 @@ Báo cáo nằm trong `reports/`, chỉ gồm các sản phẩm cần/đã cập
 - Sapo là nguồn chuẩn: tool không bao giờ ghi ngược về Sapo.
 - SKU phải trùng nhau ở hai bên. Variant không có SKU sẽ bị bỏ qua.
 - Đồng bộ theo từng chi nhánh qua `LOCATION_MAP` (Sapo Hà Nội → Haravan Hà Nội, Sapo HCM → Haravan HCM).
+- Nhiều web Haravan dùng chung 1 Sapo: khai báo `SITES=kingcom,newlite` và `NEWLITE_HARAVAN_TOKEN`, `NEWLITE_LOCATION_MAP` (xem `.env.example`). Web đầu tiên vẫn dùng `HARAVAN_TOKEN` / `LOCATION_MAP`. Mỗi lần chạy tải Sapo 1 lần rồi cập nhật từng web; web lỗi không làm hỏng web khác. Báo cáo mỗi web nằm ở `reports/<web>/`. Chạy riêng 1 web: `python sync.py --site newlite`.
 - Tồn âm trên Sapo được đẩy sang Haravan là 0.
 - Sapo app chỉ cần quyền đọc Tồn kho + Chi nhánh (không cần quyền Sản phẩm).
