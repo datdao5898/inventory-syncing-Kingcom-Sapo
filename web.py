@@ -309,6 +309,10 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/api/history":
             key = self.site().key
             self.send_json([e for e in state.history if e.get("site") == key])
+        elif path in ("/doanh-thu", "/doanh-thu/"):
+            # Trang rieng, khong phu thuoc web Haravan dang chon (doanh thu San lay tu Sapo dung chung)
+            with open(SALES_UI_FILE, "rb") as f:
+                self.send(200, f.read(), "text/html; charset=utf-8")
         elif path == "/api/sales":
             self.send_json(sales_job.status())
         elif path == "/api/sales.xlsx":
@@ -376,6 +380,7 @@ class Handler(BaseHTTPRequestHandler):
 
 
 UI_FILE = os.path.join(sync.BASE_DIR, "ui.html")
+SALES_UI_FILE = os.path.join(sync.BASE_DIR, "sales.html")
 
 
 def main():

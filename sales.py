@@ -20,6 +20,8 @@ import sync
 log = sync.log
 VN = timezone(timedelta(hours=7))
 CHANNEL_NAMES = {"shopee": "Shopee", "tiktokshop": "TikTok Shop", "lazada": "Lazada", "tiki": "Tiki"}
+PIE_TOP = 5  # bieu do tron: 5 gian lon nhat + "Cac gian khac"
+PIE_COLORS = ["2A78D6", "EB6834", "1BAF7A", "EDA100", "E87BA4", "B4B4BB"]  # giong trang web
 AD_COLUMNS = ["Ngân sách quảng cáo", "Tổng doanh thu từ Shopee ads", "Tổng đơn hàng"]
 CACHE_SECONDS = 600
 _cache = {}
@@ -147,7 +149,9 @@ def get_report(start, end, progress=None, fresh=False):
 
 def to_xlsx(report):
     from openpyxl import Workbook
-    from openpyxl.chart import BarChart, Reference
+    from openpyxl.chart import BarChart, PieChart, Reference
+    from openpyxl.chart.label import DataLabelList
+    from openpyxl.chart.marker import DataPoint
     from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
     from openpyxl.utils import get_column_letter
 
@@ -206,7 +210,41 @@ def to_xlsx(report):
         if f:
             c.number_format = f
     ws.cell(ws.max_row + 2, 1, "Các cột màu vàng để trống cho Yu điền số liệu quảng cáo.").font = Font(italic=True, color="A16207")
-    if report["shops"]:
+    shops = [r for r in report["shops"] if r["revenue"] > 0]
+    if shops:
+        # Bieu do tron (mac dinh): 5 gian lon nhat + "Cac gian khac", bang so lieu ngay canh
+        top, rest = shops[:PIE_TOP], shops[PIE_TOP:]
+        pie_rows = [(r["shop"] if r["channel"] == "Shopee" else f'{r["shop"]} ({r["channel"]})', r["revenue"]) for r in top]
+        if rest:
+            pie_rows.append((f"Các gian khác ({len(rest)} gian)", sum(r["revenue"] for r in rest)))
+        total = sum(v for _, v in pie_rows)
+        ws.cell(5, 9, "Tỷ trọng doanh thu").font = bold
+        for j, h in enumerate(["Gian hàng", "Doanh thu (đ)", "Tỷ trọng"], 9):
+            c = ws.cell(6, j, h)
+            c.font, c.fill, c.border = head_font, head_fill, box
+        for k, (name, v) in enumerate(pie_rows, 7):
+            for j, (val, f) in enumerate([(name, None), (round(v), money), (v / total, "0.0%")], 9):
+                c = ws.cell(k, j, val)
+                c.border = box
+                if f:
+                    c.number_format = f
+        pie_last = 6 + len(pie_rows)
+        for j, w in zip("IJK", (32, 18, 10)):
+            ws.column_dimensions[j].width = w
+        pie = PieChart()
+        pie.title = "Tỷ trọng doanh thu theo gian hàng"
+        pie.add_data(Reference(ws, min_col=10, min_row=6, max_row=pie_last), titles_from_data=True)
+        pie.set_categories(Reference(ws, min_col=9, min_row=7, max_row=pie_last))
+        pie.dataLabels = DataLabelList()
+        pie.dataLabels.showPercent = True
+        for k, color in enumerate(PIE_COLORS[:len(pie_rows)]):
+            pt = DataPoint(idx=k)
+            pt.graphicalProperties.solidFill = color
+            pt.graphicalProperties.line.solidFill = "FFFFFF"
+            pie.series[0].dPt.append(pt)
+        pie.height, pie.width = 10, 16
+        ws.add_chart(pie, f"I{pie_last + 2}")
+
         chart = BarChart()
         chart.type = "bar"
         chart.title = "Doanh thu theo gian hàng"
@@ -219,7 +257,7 @@ def to_xlsx(report):
         chart.set_categories(Reference(ws, min_col=1, min_row=hr + 1, max_row=last))
         chart.series[0].graphicalProperties.solidFill = "3F3F46"
         chart.height, chart.width = max(8, 0.75 * len(report["shops"]) + 3), 22
-        ws.add_chart(chart, "I5")
+        ws.add_chart(chart, f"I{pie_last + 24}")
 
     # 2a. San pham theo tung gian hang
     ws = wb.create_sheet("2a. SP theo gian hàng")
