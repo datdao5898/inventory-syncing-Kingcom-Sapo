@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="vi"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Doanh thu sàn</title>
+<title>Doanh thu sàn · 平台销售额</title>
 <style>
 :root {
   --bg:#f7f7f8; --card:#fff; --text:#18181b; --text2:#3f3f46; --muted:#71717a; --faint:#a1a1aa; --line:#e4e4e7; --grid:#f0f0f2;
@@ -38,6 +38,10 @@ svg.i { width:16px; height:16px; flex:none; fill:none; stroke:currentColor; stro
 .card-h h2 { font-size:14px; font-weight:600; margin:0; }
 .card-h p { margin:2px 0 0; color:var(--muted); font-size:12.5px; }
 .muted { color:var(--muted); } .small { font-size:12.5px; }
+/* tieng Trung di kem tieng Viet */
+.zh { color:var(--muted); font-weight:400; margin-left:6px; font-family:"PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif; }
+h1 .zh { font-size:14px; } th .zh { display:block; margin:1px 0 0; font-size:11px; }
+button .zh, .btn .zh { color:inherit; opacity:.75; } .form label .zh { margin-left:4px; }
 .row { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
 
 .form { display:flex; flex-wrap:wrap; gap:10px; align-items:flex-end; }
@@ -140,19 +144,19 @@ td.num, th.num { text-align:right; white-space:nowrap; font-variant-numeric:tabu
 
 <div class="top">
   <div class="brand"><div class="mark"><svg class="i"><use href="#i-chart"/></svg></div>
-    <div><h1>Doanh thu sàn</h1><p>Shopee, TikTok Shop · số liệu từ đơn hàng Sapo</p></div></div>
-  <a class="back" href="./"><svg class="i"><use href="#i-back"/></svg>Đồng bộ tồn kho</a>
+    <div><h1>Doanh thu sàn<span class="zh" lang="zh-CN">电商平台销售额</span></h1><p>Shopee, TikTok Shop · số liệu từ đơn hàng Sapo · 数据来自 Sapo 订单</p></div></div>
+  <a class="back" href="./"><svg class="i"><use href="#i-back"/></svg>Đồng bộ tồn kho<span class="zh" lang="zh-CN">库存同步</span></a>
 </div>
 
 <div class="content">
   <div class="card">
     <div class="form">
-      <label>Từ ngày<input type="date" id="from" value="2026-09-01"></label>
-      <label>Đến ngày<input type="date" id="to" value="2026-11-30"></label>
-      <button class="primary" id="run"><svg class="i"><use href="#i-search"/></svg>Lấy dữ liệu</button>
-      <a class="btn" id="xlsx" href="api/sales.xlsx" style="display:none"><svg class="i"><use href="#i-down"/></svg>Tải Excel</a>
+      <label><span>Từ ngày<span class="zh" lang="zh-CN">开始日期</span></span><input type="date" id="from" value="2026-09-01"></label>
+      <label><span>Đến ngày<span class="zh" lang="zh-CN">结束日期</span></span><input type="date" id="to" value="2026-11-30"></label>
+      <button class="primary" id="run"><svg class="i"><use href="#i-search"/></svg>Lấy dữ liệu<span class="zh" lang="zh-CN">获取数据</span></button>
+      <a class="btn" id="xlsx" href="api/sales.xlsx" style="display:none"><svg class="i"><use href="#i-down"/></svg>Tải Excel<span class="zh" lang="zh-CN">下载 Excel</span></a>
     </div>
-    <div id="status" class="small muted" style="margin-top:10px">Lấy đơn Shopee, TikTok Shop từ Sapo theo ngày tạo đơn. Mất khoảng 1–2 phút.</div>
+    <div id="status" class="small muted" style="margin-top:10px">Lấy đơn Shopee, TikTok Shop từ Sapo theo ngày tạo đơn. Mất khoảng 1–2 phút. · 按下单日期从 Sapo 获取 Shopee、TikTok Shop 订单，约需 1–2 分钟。</div>
   </div>
 
   <div id="result" style="display:none">
@@ -160,33 +164,33 @@ td.num, th.num { text-align:right; white-space:nowrap; font-variant-numeric:tabu
 
     <div class="card">
       <div class="card-h">
-        <div><h2>1. Tổng doanh thu theo gian hàng</h2><p>Không tính đơn đã huỷ · doanh thu đã trừ tiền hoàn trả hàng</p></div>
-        <div class="seg" id="chart-type"><button data-type="pie" class="on">Biểu đồ tròn</button><button data-type="bar">Biểu đồ cột</button></div>
+        <div><h2>1. Tổng doanh thu theo gian hàng<span class="zh" lang="zh-CN">各店铺销售额</span></h2><p>Không tính đơn đã huỷ · doanh thu đã trừ tiền hoàn trả hàng · 不含已取消订单，已扣除退货退款</p></div>
+        <div class="seg" id="chart-type"><button data-type="pie" class="on">Biểu đồ tròn<span class="zh" lang="zh-CN">饼图</span></button><button data-type="bar">Biểu đồ cột<span class="zh" lang="zh-CN">柱状图</span></button></div>
       </div>
       <div id="chart"></div>
       <div class="wrap"><table>
-        <thead><tr><th>Gian hàng</th><th>Kênh</th><th class="num">Số đơn</th><th class="num">Tổng doanh thu</th><th class="num">Tỷ trọng</th><th class="num hide-sm">Đơn huỷ</th></tr></thead>
+        <thead><tr><th>Gian hàng<span class="zh" lang="zh-CN">店铺</span></th><th>Kênh<span class="zh" lang="zh-CN">平台</span></th><th class="num">Số đơn<span class="zh" lang="zh-CN">订单数</span></th><th class="num">Tổng doanh thu<span class="zh" lang="zh-CN">销售额</span></th><th class="num">Tỷ trọng<span class="zh" lang="zh-CN">占比</span></th><th class="num hide-sm">Đơn huỷ<span class="zh" lang="zh-CN">取消订单</span></th></tr></thead>
         <tbody id="shops"></tbody>
       </table></div>
     </div>
 
     <div class="card">
-      <div class="card-h"><div><h2>2. Chi tiết từng gian hàng</h2><p id="prod-sub"></p></div>
+      <div class="card-h"><div><h2>2. Chi tiết từng gian hàng<span class="zh" lang="zh-CN">各店铺明细</span></h2><p id="prod-sub"></p></div>
         <select id="shop" title="Chọn gian hàng để xem biểu đồ và sản phẩm"></select></div>
       <div class="detail">
-        <div class="sub-card"><h3>Doanh thu theo tháng</h3><div id="d-months"></div></div>
-        <div class="sub-card"><h3>Tỷ trọng sản phẩm</h3><div id="d-pie"></div></div>
+        <div class="sub-card"><h3>Doanh thu theo tháng<span class="zh" lang="zh-CN">月度销售额</span></h3><div id="d-months"></div></div>
+        <div class="sub-card"><h3>Tỷ trọng sản phẩm<span class="zh" lang="zh-CN">产品销售占比</span></h3><div id="d-pie"></div></div>
       </div>
-      <h3 style="font-size:13px; font-weight:600; margin:18px 0 10px">Doanh thu theo sản phẩm</h3>
+      <h3 style="font-size:13px; font-weight:600; margin:18px 0 10px">Doanh thu theo sản phẩm<span class="zh" lang="zh-CN">产品销售额</span></h3>
       <div class="row">
-        <input type="search" id="q" placeholder="Tìm tên sản phẩm hoặc mã SKU...">
+        <input type="search" id="q" placeholder="Tìm tên sản phẩm hoặc mã SKU... · 搜索产品名称或 SKU">
         <span class="small muted" id="count"></span>
       </div>
       <div class="wrap"><table><thead id="prod-head"></thead><tbody id="prod"></tbody></table></div>
       <div class="more" id="more"></div>
     </div>
 
-    <p class="small muted">File Excel gồm 4 sheet: theo gian hàng (kèm biểu đồ tròn, biểu đồ cột và 3 cột để trống cho Yu điền: <b>Ngân sách quảng cáo</b>, <b>Tổng doanh thu từ Shopee ads</b>, <b>Tổng đơn hàng</b>), sản phẩm theo từng gian, sản phẩm tổng tất cả gian, biểu đồ từng gian hàng (theo tháng + tỷ trọng sản phẩm).</p>
+    <p class="small muted">Excel 文件包含 4 个工作表（店铺汇总、各店铺产品、全部产品、各店铺图表），黄色列留空由 Yu 填写广告数据。<br>File Excel gồm 4 sheet: theo gian hàng (kèm biểu đồ tròn, biểu đồ cột và 3 cột để trống cho Yu điền: <b>Ngân sách quảng cáo</b>, <b>Tổng doanh thu từ Shopee ads</b>, <b>Tổng đơn hàng</b>), sản phẩm theo từng gian, sản phẩm tổng tất cả gian, biểu đồ từng gian hàng (theo tháng + tỷ trọng sản phẩm).</p>
   </div>
 </div>
 <div class="tip" id="tip"></div>
@@ -201,6 +205,8 @@ const vnd = n => fmt(Math.round(n)) + ' đ';
 const tr = n => fmt(Math.round(n / 1e6)) + ' tr';
 const pct = (a, b) => b ? (100 * a / b).toLocaleString('vi-VN', {maximumFractionDigits: 1}) + '%' : '–';
 const dmy = d => d.split('-').reverse().join('/');
+const zh = t => '<span class="zh" lang="zh-CN">' + t + '</span>';
+const DON = 'đơn/单';
 const PIE_TOP = 10;  // 10 muc lon nhat + "Cac ... khac"
 const PIE_COLORS = Array.from({length: 10}, (_, i) => 'var(--c' + (i + 1) + ')');
 let data = null, chartType = 'pie', shopSel = '', limit = 100, timer = null;
@@ -227,7 +233,7 @@ async function load() {
   const rep = r.report;
   if (!data || data.generated_at !== rep.generated_at || data.from !== rep.from || data.to !== rep.to) { data = rep; shopSel = ''; limit = 100; }
   $('#from').value = data.from; $('#to').value = data.to;
-  $('#status').textContent = 'Kỳ ' + dmy(data.from) + ' – ' + dmy(data.to) + ' · dữ liệu lấy lúc ' + data.generated_at.slice(11) + ' ngày ' +
+  $('#status').textContent = 'Kỳ / 期间: ' + dmy(data.from) + ' – ' + dmy(data.to) + ' · dữ liệu lấy lúc / 数据时间: ' + data.generated_at.slice(11) + ' ' +
     dmy(data.generated_at.slice(0, 10)) + '. Bấm "Lấy dữ liệu" lần nữa để lấy số mới nhất.';
   $('#xlsx').style.display = '';
   render();
@@ -249,13 +255,15 @@ function kpi(label, value, sub) {
 function render() {
   const t = data.total;
   $('#result').style.display = '';
-  $('#kpis').innerHTML = kpi('Tổng doanh thu', tr(t.revenue), vnd(t.revenue)) + kpi('Số đơn hàng', fmt(t.orders), 'Không tính đơn huỷ') +
-    kpi('Gian hàng có đơn', fmt(t.shops), 'Shopee + TikTok Shop') + kpi('Đơn đã huỷ', fmt(t.cancelled), 'Không tính vào doanh thu');
+  $('#kpis').innerHTML = kpi('Tổng doanh thu' + zh('总销售额'), tr(t.revenue), vnd(t.revenue)) +
+    kpi('Số đơn hàng' + zh('订单数'), fmt(t.orders), 'Không tính đơn huỷ · 不含已取消') +
+    kpi('Gian hàng có đơn' + zh('有订单店铺'), fmt(t.shops), 'Shopee + TikTok Shop') +
+    kpi('Đơn đã huỷ' + zh('已取消订单'), fmt(t.cancelled), 'Không tính vào doanh thu · 不计入销售额');
   renderChart();
   $('#shops').innerHTML = data.shops.map(r => '<tr><td>' + esc(r.shop) + '</td><td>' + esc(r.channel) + '</td><td class="num">' + fmt(r.orders) +
     '</td><td class="num">' + vnd(r.revenue) + '</td><td class="num">' + pct(r.revenue, t.revenue) + '</td><td class="num hide-sm muted">' + fmt(r.cancelled) + '</td></tr>').join('') +
-    '<tr><td><b>Tổng cộng</b></td><td></td><td class="num"><b>' + fmt(t.orders) + '</b></td><td class="num"><b>' + vnd(t.revenue) + '</b></td><td class="num">100%</td><td class="num hide-sm muted">' + fmt(t.cancelled) + '</td></tr>';
-  $('#shop').innerHTML = '<option value="">Tổng tất cả gian hàng</option>' +
+    '<tr><td><b>Tổng cộng</b>' + zh('合计') + '</td><td></td><td class="num"><b>' + fmt(t.orders) + '</b></td><td class="num"><b>' + vnd(t.revenue) + '</b></td><td class="num">100%</td><td class="num hide-sm muted">' + fmt(t.cancelled) + '</td></tr>';
+  $('#shop').innerHTML = '<option value="">Tổng tất cả gian hàng · 全部店铺</option>' +
     data.shops.map(r => '<option value="' + esc(r.channel + '|' + r.shop) + '">' + esc(r.shop) + ' (' + esc(r.channel) + ')</option>').join('');
   $('#shop').value = shopSel;
   renderDetail();
@@ -320,7 +328,7 @@ function topSlices(items, name, sub, tip, otherLabel) {
 function renderChart() {
   document.querySelectorAll('#chart-type button').forEach(b => b.classList.toggle('on', b.dataset.type === chartType));
   if (chartType === 'bar') return renderBar();
-  const {slices, total} = topSlices(data.shops, r => r.shop, r => r.channel, r => fmt(r.orders) + ' đơn', n => 'Các gian khác (' + n + ' gian)');
+  const {slices, total} = topSlices(data.shops, r => r.shop, r => r.channel, r => fmt(r.orders) + ' ' + DON, n => 'Các gian khác / 其他店铺 (' + n + ')');
   drawPie($('#chart'), slices, total, 'Tỷ trọng doanh thu theo gian hàng');
 }
 function renderBar() {
@@ -332,7 +340,7 @@ function renderBar() {
   document.querySelectorAll('#chart .tr').forEach(el => {
     el.onmousemove = e => {
       const r = data.shops[el.dataset.i];
-      showTip(e, '<b>' + esc(r.shop) + '</b> · ' + esc(r.channel) + '<br>' + vnd(r.revenue) + ' · ' + pct(r.revenue, data.total.revenue) + '<br>' + fmt(r.orders) + ' đơn');
+      showTip(e, '<b>' + esc(r.shop) + '</b> · ' + esc(r.channel) + '<br>' + vnd(r.revenue) + ' · ' + pct(r.revenue, data.total.revenue) + '<br>' + fmt(r.orders) + ' ' + DON);
     };
     el.onmouseleave = hideTip;
   });
@@ -340,20 +348,21 @@ function renderBar() {
 
 /* ---------- chi tiet gian hang ---------- */
 const monthLabel = m => 'T' + Number(m.slice(5)) + '/' + m.slice(0, 4);
+const monthZh = m => m.slice(0, 4) + '年' + Number(m.slice(5)) + '月';
 const selectedShop = () => shopSel ? data.shops.find(r => r.channel + '|' + r.shop === shopSel) : null;
 function renderDetail() {
   const shop = selectedShop(), months = (shop || data.total).months || [];
   const max = Math.max(1, ...months.map(m => m.revenue));
   $('#d-months').innerHTML = months.length ? '<div class="cols">' + months.map((m, i) => '<div class="c" data-i="' + i + '"><div class="v">' + tr(m.revenue) + '</div>' +
       '<div class="b" style="height:' + (85 * Math.max(m.revenue, 0) / max).toFixed(1) + '%"></div></div>').join('') + '</div>' +
-    '<div class="cols-x">' + months.map(m => '<div><b>' + monthLabel(m.month) + '</b><br>' + fmt(m.orders) + ' đơn</div>').join('') + '</div>'
-    : '<div class="small muted">Không có dữ liệu</div>';
+    '<div class="cols-x">' + months.map(m => '<div><b>' + monthLabel(m.month) + '</b> ' + zh(Number(m.month.slice(5)) + '月') + '<br>' + fmt(m.orders) + ' ' + DON + '</div>').join('') + '</div>'
+    : '<div class="small muted">Không có dữ liệu · 无数据</div>';
   $('#d-months').querySelectorAll('.c').forEach(el => {
-    el.onmousemove = e => { const m = months[el.dataset.i]; showTip(e, '<b>' + monthLabel(m.month) + '</b><br>' + vnd(m.revenue) + '<br>' + fmt(m.orders) + ' đơn'); };
+    el.onmousemove = e => { const m = months[el.dataset.i]; showTip(e, '<b>' + monthLabel(m.month) + ' · ' + monthZh(m.month) + '</b><br>' + vnd(m.revenue) + '<br>' + fmt(m.orders) + ' ' + DON); };
     el.onmouseleave = hideTip;
   });
   const prods = shop ? data.products.filter(r => r.channel + '|' + r.shop === shopSel) : data.all_products;
-  const {slices, total} = topSlices(prods, r => r.name, r => '', r => 'Số lượng ' + fmt(r.qty), n => 'Các sản phẩm khác (' + n + ' SP)');
+  const {slices, total} = topSlices(prods, r => r.name, r => '', r => 'Số lượng / 数量: ' + fmt(r.qty), n => 'Các sản phẩm khác / 其他产品 (' + n + ')');
   drawPie($('#d-pie'), slices, total, 'Tỷ trọng sản phẩm');
 }
 
@@ -364,14 +373,15 @@ function renderProducts() {
   if (q) rows = rows.filter(r => norm(r.name + ' ' + r.sku).includes(q));
   const sum = rows.reduce((a, r) => a + r.revenue, 0);
   const cur = selectedShop() || data.total;
-  $('#prod-sub').textContent = (shopSel ? 'Gian hàng ' + shopSel.split('|')[1] + ' · ' + shopSel.split('|')[0] : 'Tổng tất cả các gian hàng') +
-    ' — ' + fmt(cur.orders) + ' đơn, ' + vnd(cur.revenue);
-  $('#count').textContent = fmt(rows.length) + ' sản phẩm · ' + vnd(sum);
-  $('#prod-head').innerHTML = '<tr><th>Sản phẩm</th><th class="num">Số lượng</th><th class="num">Tổng doanh thu</th>' + (shopSel ? '' : '<th class="num hide-sm">Số gian bán</th>') + '</tr>';
+  $('#prod-sub').textContent = (shopSel ? 'Gian hàng / 店铺: ' + shopSel.split('|')[1] + ' · ' + shopSel.split('|')[0] : 'Tổng tất cả các gian hàng / 全部店铺') +
+    ' — ' + fmt(cur.orders) + ' ' + DON + ', ' + vnd(cur.revenue);
+  $('#count').textContent = fmt(rows.length) + ' sản phẩm/产品 · ' + vnd(sum);
+  $('#prod-head').innerHTML = '<tr><th>Sản phẩm' + zh('产品') + '</th><th class="num">Số lượng' + zh('数量') + '</th><th class="num">Tổng doanh thu' + zh('销售额') + '</th>' +
+    (shopSel ? '' : '<th class="num hide-sm">Số gian bán' + zh('销售店铺数') + '</th>') + '</tr>';
   $('#prod').innerHTML = rows.slice(0, limit).map(r => '<tr><td>' + esc(r.name) + '<div class="sku">' + esc(r.sku) + '</div></td><td class="num">' + fmt(r.qty) +
     '</td><td class="num">' + vnd(r.revenue) + '</td>' + (shopSel ? '' : '<td class="num hide-sm muted">' + r.shops + '</td>') + '</tr>').join('') ||
-    '<tr><td colspan="4" class="empty">Không có sản phẩm</td></tr>';
-  $('#more').innerHTML = rows.length > limit ? '<button id="more-btn">Xem thêm (' + fmt(rows.length - limit) + ')</button>' : '';
+    '<tr><td colspan="4" class="empty">Không có sản phẩm · 无产品</td></tr>';
+  $('#more').innerHTML = rows.length > limit ? '<button id="more-btn">Xem thêm / 查看更多 (' + fmt(rows.length - limit) + ')</button>' : '';
 }
 $('#shop').onchange = e => { shopSel = e.target.value; limit = 100; renderDetail(); renderProducts(); };
 $('#q').oninput = () => { limit = 100; renderProducts(); };
