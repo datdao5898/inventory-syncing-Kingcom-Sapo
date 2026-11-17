@@ -7,7 +7,8 @@
   --bg:#f7f7f8; --card:#fff; --text:#18181b; --text2:#3f3f46; --muted:#71717a; --faint:#a1a1aa; --line:#e4e4e7; --grid:#f0f0f2;
   --ink:#18181b; --ink-hover:#3f3f46; --bad:#b91c1c; --hover:#fafafa;
   /* mau phan loai (thu tu co dinh) + "Khac" */
-  --c1:#2a78d6; --c2:#eb6834; --c3:#1baf7a; --c4:#eda100; --c5:#e87ba4; --c-other:#b4b4bb;
+  --c1:#2a78d6; --c2:#eb6834; --c3:#1baf7a; --c4:#eda100; --c5:#e87ba4;
+  --c6:#008300; --c7:#6250d6; --c8:#e34948; --c9:#0094c6; --c10:#b8650a; --c-other:#b4b4bb;
   --bar:#3f3f46; --bar-tt:#eb6834;
   --radius:8px;
 }
@@ -200,8 +201,8 @@ const vnd = n => fmt(Math.round(n)) + ' đ';
 const tr = n => fmt(Math.round(n / 1e6)) + ' tr';
 const pct = (a, b) => b ? (100 * a / b).toLocaleString('vi-VN', {maximumFractionDigits: 1}) + '%' : '–';
 const dmy = d => d.split('-').reverse().join('/');
-const PIE_TOP = 5;  // 5 gian lon nhat + "Cac gian khac"
-const PIE_COLORS = ['var(--c1)', 'var(--c2)', 'var(--c3)', 'var(--c4)', 'var(--c5)'];
+const PIE_TOP = 10;  // 10 muc lon nhat + "Cac ... khac"
+const PIE_COLORS = Array.from({length: 10}, (_, i) => 'var(--c' + (i + 1) + ')');
 let data = null, chartType = 'pie', shopSel = '', limit = 100, timer = null;
 try { chartType = localStorage.getItem('sales-chart') || 'pie'; } catch (e) {}
 

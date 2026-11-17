@@ -20,8 +20,9 @@ import sync
 log = sync.log
 VN = timezone(timedelta(hours=7))
 CHANNEL_NAMES = {"shopee": "Shopee", "tiktokshop": "TikTok Shop", "lazada": "Lazada", "tiki": "Tiki"}
-PIE_TOP = 5  # bieu do tron: 5 gian lon nhat + "Cac gian khac"
-PIE_COLORS = ["2A78D6", "EB6834", "1BAF7A", "EDA100", "E87BA4", "B4B4BB"]  # giong trang web
+PIE_TOP = 10  # bieu do tron: 10 muc lon nhat + "Cac ... khac"
+# 10 mau phan loai (da kiem tra phan biet duoc ca voi nguoi mu mau) + xam cho "khac"; giong trang web
+PIE_COLORS = ["2A78D6", "EB6834", "1BAF7A", "EDA100", "E87BA4", "008300", "6250D6", "E34948", "0094C6", "B8650A", "B4B4BB"]
 AD_COLUMNS = ["Ngân sách quảng cáo", "Tổng doanh thu từ Shopee ads", "Tổng đơn hàng"]
 CACHE_SECONDS = 600
 _cache = {}
@@ -31,19 +32,22 @@ def parse_day(s):
     return datetime.strptime(s, "%Y-%m-%d").date()
 
 
-def fetch_orders(sapo, start, end, progress=None):
-    """Tat ca don (moi trang thai) tao trong [start, end] theo gio VN."""
+def iter_order_pages(sapo, start, end, progress=None):
+    """Tung trang don (moi trang thai) tao trong [start, end] theo gio VN.
+    Tra ve tung trang de nguoi goi cong don roi bo di - khong giu ca nghin don trong RAM
+    (moi don day du ~20 KB, 1 nam ~30.000 don se ton hon 1 GB)."""
     params = {"created_on_min": f"{start:%Y-%m-%d}T00:00:00+07:00",
               "created_on_max": f"{end:%Y-%m-%d}T23:59:59+07:00"}
     total = sapo.get("orders/count.json", params).get("count", 0)
-    out, page = [], 1
+    done, page = 0, 1
     while True:
         rows = sapo.get("orders.json", {**params, "limit": 250, "page": page}).get("orders", [])
-        out += rows
+        yield rows
+        done += len(rows)
         if progress:
-            progress(len(out), total)
+            progress(done, total)
         if len(rows) < 250:
-            return out
+            return
         page += 1
 
 
@@ -97,29 +101,36 @@ def months_between(start, end):
     return out
 
 
-def build_report(orders, start, end):
-    months = months_between(start, end)
-    shops = {}                                  # (kenh, gian) -> tong
-    products = defaultdict(lambda: {"qty": 0, "revenue": 0.0})   # (kenh, gian, sku, ten)
-    all_products = defaultdict(lambda: {"qty": 0, "revenue": 0.0, "shops": set()})  # (sku, ten)
-    cancelled = 0
-    names = {}                                   # sku -> ten dau tien gap (gop ten khac nhau cua cung SKU)
-    for o in orders:
+class Aggregator:
+    """Cong don tung don hang, chi giu cac con so can cho bao cao (RAM khong tang theo so don)."""
+
+    def __init__(self, start, end):
+        self.start, self.end = start, end
+        self.months = months_between(start, end)
+        self.shops = {}                                   # (kenh, gian) -> tong
+        self.products = defaultdict(lambda: [0, 0.0])    # (kenh, gian, sku) -> [so luong, doanh thu]
+        self.all_products = defaultdict(lambda: [0, 0.0, set()])  # sku -> [so luong, doanh thu, {gian}]
+        self.names = {}                                   # sku -> (sku goc, ten dau tien gap)
+        self.cancelled = 0
+
+    def add(self, o):
         key = shop_of(o)
         if not key:
-            continue
-        s = shops.setdefault(key, {"channel": key[0], "shop": key[1], "orders": 0, "revenue": 0.0, "cancelled": 0,
-                                   "months": {m: {"orders": 0, "revenue": 0.0} for m in months}})
+            return
+        s = self.shops.get(key)
+        if s is None:
+            s = self.shops[key] = {"channel": key[0], "shop": key[1], "orders": 0, "revenue": 0.0, "cancelled": 0,
+                                   "months": {m: [0, 0.0] for m in self.months}}
         if is_cancelled(o):
             s["cancelled"] += 1
-            cancelled += 1
-            continue
+            self.cancelled += 1
+            return
         revenue = order_revenue(o)
         s["orders"] += 1
         s["revenue"] += revenue
-        mo = s["months"].setdefault(month_of(o), {"orders": 0, "revenue": 0.0})
-        mo["orders"] += 1
-        mo["revenue"] += revenue
+        mo = s["months"].setdefault(month_of(o), [0, 0.0])
+        mo[0] += 1
+        mo[1] += revenue
         lines = [li for li in o.get("line_items", []) if line_qty(li) > 0]
         # Giam gia cap don (voucher shop...) khong nam trong don gia tung dong -> chia theo ty le
         # de tong doanh thu san pham khop tong doanh thu gian hang
@@ -130,44 +141,57 @@ def build_report(orders, start, end):
             sku = (li.get("sku") or "").strip()
             name = (li.get("name") or li.get("title") or "").strip()
             pkey = sku.upper() or name
-            names.setdefault(pkey, (sku, name))
-            p = products[(key[0], key[1], pkey)]
-            p["qty"] += qty
-            p["revenue"] += rev
-            a = all_products[pkey]
-            a["qty"] += qty
-            a["revenue"] += rev
-            a["shops"].add(key[1])
-    shop_rows = sorted(shops.values(), key=lambda r: -r["revenue"])
-    for r in shop_rows:  # {thang: ...} -> danh sach theo thu tu thang
-        r["months"] = [{"month": m, **v} for m, v in sorted(r["months"].items())]
-    total_months = [{"month": m,
-                     "orders": sum(x["orders"] for r in shop_rows for x in r["months"] if x["month"] == m),
-                     "revenue": sum(x["revenue"] for r in shop_rows for x in r["months"] if x["month"] == m)}
-                    for m in months]
-    prod_rows = sorted(({"channel": c, "shop": sh, "sku": names[k][0], "name": names[k][1], **v}
-                        for (c, sh, k), v in products.items()),
-                       key=lambda r: (-shops[(r["channel"], r["shop"])]["revenue"], -r["revenue"]))
-    all_rows = sorted(({"sku": names[k][0], "name": names[k][1], "qty": v["qty"], "revenue": v["revenue"],
-                        "shops": len(v["shops"])} for k, v in all_products.items()),
-                      key=lambda r: -r["revenue"])
-    return {
-        "from": f"{start:%Y-%m-%d}", "to": f"{end:%Y-%m-%d}",
-        "generated_at": datetime.now(VN).strftime("%Y-%m-%d %H:%M"),
-        "total": {"orders": sum(r["orders"] for r in shop_rows), "revenue": sum(r["revenue"] for r in shop_rows),
-                  "cancelled": cancelled, "shops": len(shop_rows), "months": total_months},
-        "shops": shop_rows, "products": prod_rows, "all_products": all_rows,
-    }
+            if pkey not in self.names:
+                self.names[pkey] = (sku, name)
+            p = self.products[(key[0], key[1], pkey)]
+            p[0] += qty
+            p[1] += rev
+            a = self.all_products[pkey]
+            a[0] += qty
+            a[1] += rev
+            a[2].add(key)
+
+    def result(self):
+        shops, names = self.shops, self.names
+        shop_rows = sorted(({**r, "months": [{"month": m, "orders": v[0], "revenue": v[1]} for m, v in sorted(r["months"].items())]}
+                            for r in shops.values()), key=lambda r: -r["revenue"])
+        total_months = [{"month": m,
+                         "orders": sum(r["months"][m][0] for r in shops.values() if m in r["months"]),
+                         "revenue": sum(r["months"][m][1] for r in shops.values() if m in r["months"])}
+                        for m in self.months]
+        prod_rows = sorted(({"channel": c, "shop": sh, "sku": names[k][0], "name": names[k][1], "qty": v[0], "revenue": v[1]}
+                            for (c, sh, k), v in self.products.items()),
+                           key=lambda r: (-shops[(r["channel"], r["shop"])]["revenue"], -r["revenue"]))
+        all_rows = sorted(({"sku": names[k][0], "name": names[k][1], "qty": v[0], "revenue": v[1], "shops": len(v[2])}
+                           for k, v in self.all_products.items()), key=lambda r: -r["revenue"])
+        return {
+            "from": f"{self.start:%Y-%m-%d}", "to": f"{self.end:%Y-%m-%d}",
+            "generated_at": datetime.now(VN).strftime("%Y-%m-%d %H:%M"),
+            "total": {"orders": sum(r["orders"] for r in shop_rows), "revenue": sum(r["revenue"] for r in shop_rows),
+                      "cancelled": self.cancelled, "shops": len(shop_rows), "months": total_months},
+            "shops": shop_rows, "products": prod_rows, "all_products": all_rows,
+        }
+
+
+def build_report(orders, start, end):
+    agg = Aggregator(start, end)
+    for o in orders:
+        agg.add(o)
+    return agg.result()
 
 
 def get_report(start, end, progress=None, fresh=False):
-    """Bao cao co cache 10 phut (lay ~30 trang don mat 1-2 phut)."""
+    """Bao cao co cache 10 phut. Lay don theo tung trang 250 don, cong don xong bo ngay."""
     key = (start, end)
     hit = _cache.get(key)
     if hit and not fresh and time.time() - hit[0] < CACHE_SECONDS:
         return hit[1]
-    orders = fetch_orders(sync.Sapo(), start, end, progress)
-    report = build_report(orders, start, end)
+    agg = Aggregator(start, end)
+    for page in iter_order_pages(sync.Sapo(), start, end, progress):
+        for o in page:
+            agg.add(o)
+        del page
+    report = agg.result()
     _cache.clear()
     _cache[key] = (time.time(), report)
     return report
@@ -240,7 +264,7 @@ def to_xlsx(report):
     ws.cell(ws.max_row + 2, 1, "Các cột màu vàng để trống cho Yu điền số liệu quảng cáo.").font = Font(italic=True, color="A16207")
     shops = [r for r in report["shops"] if r["revenue"] > 0]
     if shops:
-        # Bieu do tron (mac dinh): 5 gian lon nhat + "Cac gian khac", bang so lieu ngay canh
+        # Bieu do tron (mac dinh): 10 gian lon nhat + "Cac gian khac", bang so lieu ngay canh
         top, rest = shops[:PIE_TOP], shops[PIE_TOP:]
         pie_rows = [(r["shop"] if r["channel"] == "Shopee" else f'{r["shop"]} ({r["channel"]})', r["revenue"]) for r in top]
         if rest:
@@ -270,7 +294,7 @@ def to_xlsx(report):
             pt.graphicalProperties.solidFill = color
             pt.graphicalProperties.line.solidFill = "FFFFFF"
             pie.series[0].dPt.append(pt)
-        pie.height, pie.width = 10, 16
+        pie.height, pie.width = 11, 18
         ws.add_chart(pie, f"I{pie_last + 2}")
 
         chart = BarChart()
@@ -285,7 +309,7 @@ def to_xlsx(report):
         chart.set_categories(Reference(ws, min_col=1, min_row=hr + 1, max_row=last))
         chart.series[0].graphicalProperties.solidFill = "3F3F46"
         chart.height, chart.width = max(8, 0.75 * len(report["shops"]) + 3), 22
-        ws.add_chart(chart, f"I{pie_last + 24}")
+        ws.add_chart(chart, f"I{pie_last + 26}")
 
     # 2a. San pham theo tung gian hang
     ws = wb.create_sheet("2a. SP theo gian hàng")
@@ -313,7 +337,7 @@ def to_xlsx(report):
     blocks = [("Tất cả gian hàng", "", t, report["all_products"])] + [
         (r["shop"], r["channel"], r, [p for p in report["products"] if p["shop"] == r["shop"] and p["channel"] == r["channel"]])
         for r in report["shops"] if r["revenue"] > 0]
-    BLOCK = 18  # so dong moi khoi (du cho bieu do cao 7cm)
+    BLOCK = 22  # so dong moi khoi (du cho bang 10 SP + bieu do cao 10cm)
     for n, (name, channel, s, prods) in enumerate(blocks):
         b = 5 + n * BLOCK
         vn = lambda x: f"{round(x):,}".replace(",", ".")
@@ -331,7 +355,7 @@ def to_xlsx(report):
                 if f:
                     c.number_format = f
         m_last = b + 1 + len(s["months"])
-        # bang ty trong san pham: 5 SP lon nhat + cac SP khac
+        # bang ty trong san pham: 10 SP lon nhat + cac SP khac
         prods = [p for p in prods if p["revenue"] > 0]
         rows = [(p["name"], p["revenue"]) for p in prods[:PIE_TOP]]
         if len(prods) > PIE_TOP:
@@ -358,7 +382,7 @@ def to_xlsx(report):
         bar.series[0].graphicalProperties.solidFill = "3F3F46"
         bar.dataLabels = DataLabelList()
         bar.dataLabels.showVal = True
-        bar.height, bar.width = 7, 12
+        bar.height, bar.width = 10, 12
         ws.add_chart(bar, f"I{b}")
         if rows:
             pie = PieChart()
@@ -372,7 +396,7 @@ def to_xlsx(report):
                 pt.graphicalProperties.solidFill = color
                 pt.graphicalProperties.line.solidFill = "FFFFFF"
                 pie.series[0].dPt.append(pt)
-            pie.height, pie.width = 7, 14
+            pie.height, pie.width = 10, 20
             ws.add_chart(pie, f"P{b}")
 
     buf = io.BytesIO()
