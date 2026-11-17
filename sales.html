@@ -65,6 +65,20 @@ input[type=search] { flex:1; min-width:200px; }
 .pie svg { display:block; width:100%; height:auto; }
 .pie path { stroke:var(--card); stroke-width:2; stroke-linejoin:round; cursor:default; transition:opacity .15s; }
 .pie.hl path:not(.on) { opacity:.35; }
+/* chi tiet gian hang */
+.detail { display:grid; grid-template-columns:minmax(0, 2fr) minmax(0, 3fr); gap:16px; margin:14px 0 4px; }
+.sub-card { border:1px solid var(--line); border-radius:var(--radius); padding:14px 16px; min-width:0; }
+.sub-card h3 { font-size:13px; font-weight:600; margin:0 0 12px; }
+.sub-card .pie-wrap { grid-template-columns:minmax(140px, 180px) 1fr; gap:16px; }
+.sub-card .legend-list .it { padding:4px 6px; font-size:12.5px; }
+.cols { display:flex; align-items:flex-end; gap:12px; height:200px; padding-top:18px; }
+.cols .c { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:flex-end; height:100%; min-width:0; }
+.cols .c .v { font-size:12px; font-variant-numeric:tabular-nums; color:var(--text2); margin-bottom:4px; white-space:nowrap; }
+.cols .c .b { width:min(56px, 70%); background:var(--bar); border-radius:4px 4px 0 0; min-height:1px; }
+.cols .c:hover .b { background:var(--ink); }
+.cols-x { display:flex; gap:12px; border-top:1px solid #d4d4d8; padding-top:6px; }
+.cols-x div { flex:1; text-align:center; font-size:12px; color:var(--muted); line-height:1.35; min-width:0; }
+.cols-x b { color:var(--text2); font-weight:500; }
 .legend-list { display:flex; flex-direction:column; gap:2px; max-width:560px; }
 .legend-list .it { display:grid; grid-template-columns:12px 1fr auto auto; gap:10px; align-items:center; padding:5px 8px; border-radius:6px; font-size:13px; }
 .legend-list .it:hover, .legend-list .it.on { background:var(--hover); }
@@ -104,7 +118,8 @@ td.num, th.num { text-align:right; white-space:nowrap; font-variant-numeric:tabu
 
 @media (max-width:900px) {
   .kpis { grid-template-columns:repeat(2, minmax(0,1fr)); }
-  .pie-wrap { grid-template-columns:1fr; } .pie { max-width:260px; margin:0 auto; }
+  .pie-wrap, .sub-card .pie-wrap { grid-template-columns:1fr; } .pie { max-width:260px; margin:0 auto; }
+  .detail { grid-template-columns:1fr; }
 }
 @media (max-width:640px) {
   .top { padding:12px 16px; } .content { padding:14px 16px 40px; }
@@ -155,9 +170,14 @@ td.num, th.num { text-align:right; white-space:nowrap; font-variant-numeric:tabu
     </div>
 
     <div class="card">
-      <div class="card-h"><div><h2>2. Doanh thu theo sản phẩm</h2><p id="prod-sub"></p></div></div>
+      <div class="card-h"><div><h2>2. Chi tiết từng gian hàng</h2><p id="prod-sub"></p></div>
+        <select id="shop" title="Chọn gian hàng để xem biểu đồ và sản phẩm"></select></div>
+      <div class="detail">
+        <div class="sub-card"><h3>Doanh thu theo tháng</h3><div id="d-months"></div></div>
+        <div class="sub-card"><h3>Tỷ trọng sản phẩm</h3><div id="d-pie"></div></div>
+      </div>
+      <h3 style="font-size:13px; font-weight:600; margin:18px 0 10px">Doanh thu theo sản phẩm</h3>
       <div class="row">
-        <select id="shop"></select>
         <input type="search" id="q" placeholder="Tìm tên sản phẩm hoặc mã SKU...">
         <span class="small muted" id="count"></span>
       </div>
@@ -165,7 +185,7 @@ td.num, th.num { text-align:right; white-space:nowrap; font-variant-numeric:tabu
       <div class="more" id="more"></div>
     </div>
 
-    <p class="small muted">File Excel gồm 3 sheet: theo gian hàng (kèm biểu đồ tròn, biểu đồ cột và 3 cột để trống cho Yu điền: <b>Ngân sách quảng cáo</b>, <b>Tổng doanh thu từ Shopee ads</b>, <b>Tổng đơn hàng</b>), sản phẩm theo từng gian, sản phẩm tổng tất cả gian.</p>
+    <p class="small muted">File Excel gồm 4 sheet: theo gian hàng (kèm biểu đồ tròn, biểu đồ cột và 3 cột để trống cho Yu điền: <b>Ngân sách quảng cáo</b>, <b>Tổng doanh thu từ Shopee ads</b>, <b>Tổng đơn hàng</b>), sản phẩm theo từng gian, sản phẩm tổng tất cả gian, biểu đồ từng gian hàng (theo tháng + tỷ trọng sản phẩm).</p>
   </div>
 </div>
 <div class="tip" id="tip"></div>
@@ -237,6 +257,7 @@ function render() {
   $('#shop').innerHTML = '<option value="">Tổng tất cả gian hàng</option>' +
     data.shops.map(r => '<option value="' + esc(r.channel + '|' + r.shop) + '">' + esc(r.shop) + ' (' + esc(r.channel) + ')</option>').join('');
   $('#shop').value = shopSel;
+  renderDetail();
   renderProducts();
 }
 
@@ -247,18 +268,15 @@ $('#chart-type').onclick = e => {
   try { localStorage.setItem('sales-chart', chartType); } catch (err) {}
   renderChart();
 };
-function pieSlices() {
-  const shops = data.shops.filter(r => r.revenue > 0), total = shops.reduce((a, r) => a + r.revenue, 0);
-  const top = shops.slice(0, PIE_TOP).map((r, i) => ({name: r.shop, sub: r.channel, value: r.revenue, orders: r.orders, color: PIE_COLORS[i]}));
-  const rest = shops.slice(PIE_TOP);
-  if (rest.length) top.push({name: 'Các gian khác', sub: rest.length + ' gian', value: rest.reduce((a, r) => a + r.revenue, 0),
-    orders: rest.reduce((a, r) => a + r.orders, 0), color: 'var(--c-other)', list: rest.map(r => r.shop)});
-  return {slices: top, total};
+function showTip(e, html) {
+  const tip = $('#tip');
+  tip.innerHTML = html; tip.style.display = 'block';
+  tip.style.left = Math.min(e.clientX + 14, innerWidth - tip.offsetWidth - 8) + 'px'; tip.style.top = (e.clientY + 14) + 'px';
 }
-function renderChart() {
-  document.querySelectorAll('#chart-type button').forEach(b => b.classList.toggle('on', b.dataset.type === chartType));
-  if (chartType === 'bar') return renderBar();
-  const {slices, total} = pieSlices();
+const hideTip = () => { $('#tip').style.display = 'none'; };
+/* Bieu do tron vao box: slices [{name, sub, value, color, tip, list}] */
+function drawPie(box, slices, total, label) {
+  if (!slices.length) { box.innerHTML = '<div class="small muted">Không có doanh thu</div>'; return; }
   const R = 100, C = 110;
   let a0 = -Math.PI / 2, paths = '';
   slices.forEach((s, i) => {
@@ -270,27 +288,42 @@ function renderChart() {
     paths += '<path data-i="' + i + '" d="' + d + '" style="fill:' + s.color + '"/>';
     a0 = a1;
   });
-  $('#chart').innerHTML = '<div class="pie-wrap"><div class="pie" id="pie"><svg viewBox="0 0 220 220" role="img" aria-label="Tỷ trọng doanh thu theo gian hàng">' + paths + '</svg></div>' +
-    '<div class="legend-list">' + slices.map((s, i) => '<div class="it" data-i="' + i + '"' + (s.list ? ' title="' + esc(s.list.join(', ')) + '"' : '') + '>' +
-      '<span class="sw" style="background:' + s.color + '"></span><span class="nm">' + esc(s.name) + '<small>' + esc(s.sub) + '</small></span>' +
+  box.innerHTML = '<div class="pie-wrap"><div class="pie"><svg viewBox="0 0 220 220" role="img" aria-label="' + esc(label) + '">' + paths + '</svg></div>' +
+    '<div class="legend-list">' + slices.map((s, i) => '<div class="it" data-i="' + i + '" title="' + esc(s.list || s.name) + '">' +
+      '<span class="sw" style="background:' + s.color + '"></span><span class="nm">' + esc(s.name) + (s.sub ? '<small>' + esc(s.sub) + '</small>' : '') + '</span>' +
       '<span class="pct">' + pct(s.value, total) + '</span><span class="amt">' + tr(s.value) + '</span></div>').join('') + '</div></div>';
-  const tip = $('#tip'), pie = $('#pie');
+  const pie = box.querySelector('.pie');
   const hl = i => {
     pie.classList.toggle('hl', i != null);
-    document.querySelectorAll('#chart [data-i]').forEach(el => el.classList.toggle('on', el.dataset.i === String(i)));
+    box.querySelectorAll('[data-i]').forEach(el => el.classList.toggle('on', el.dataset.i === String(i)));
   };
-  document.querySelectorAll('#chart [data-i]').forEach(el => {
+  box.querySelectorAll('[data-i]').forEach(el => {
     el.onmousemove = e => {
       const s = slices[el.dataset.i]; hl(el.dataset.i);
-      if (el.tagName !== 'path') { tip.style.display = 'none'; return; }
-      tip.innerHTML = '<b>' + esc(s.name) + '</b> · ' + esc(s.sub) + '<br>' + vnd(s.value) + ' · ' + pct(s.value, total) + '<br>' + fmt(s.orders) + ' đơn';
-      tip.style.display = 'block'; tip.style.left = (e.clientX + 14) + 'px'; tip.style.top = (e.clientY + 14) + 'px';
+      if (el.tagName !== 'path') { hideTip(); return; }
+      showTip(e, '<b>' + esc(s.name) + '</b>' + (s.sub ? ' · ' + esc(s.sub) : '') + '<br>' + vnd(s.value) + ' · ' + pct(s.value, total) + (s.tip ? '<br>' + s.tip : ''));
     };
-    el.onmouseleave = () => { hl(null); tip.style.display = 'none'; };
+    el.onmouseleave = () => { hl(null); hideTip(); };
   });
 }
+/* Top 5 + "khac" (mau co dinh theo thu tu) */
+function topSlices(items, name, sub, tip, otherLabel) {
+  items = items.filter(r => r.revenue > 0);
+  const total = items.reduce((a, r) => a + r.revenue, 0);
+  const slices = items.slice(0, PIE_TOP).map((r, i) => ({name: name(r), sub: sub(r), value: r.revenue, tip: tip(r), color: PIE_COLORS[i]}));
+  const rest = items.slice(PIE_TOP);
+  if (rest.length) slices.push({name: otherLabel(rest.length), sub: '', value: rest.reduce((a, r) => a + r.revenue, 0), color: 'var(--c-other)',
+    list: rest.slice(0, 30).map(name).join(', ') + (rest.length > 30 ? ', ...' : '')});
+  return {slices, total};
+}
+function renderChart() {
+  document.querySelectorAll('#chart-type button').forEach(b => b.classList.toggle('on', b.dataset.type === chartType));
+  if (chartType === 'bar') return renderBar();
+  const {slices, total} = topSlices(data.shops, r => r.shop, r => r.channel, r => fmt(r.orders) + ' đơn', n => 'Các gian khác (' + n + ' gian)');
+  drawPie($('#chart'), slices, total, 'Tỷ trọng doanh thu theo gian hàng');
+}
 function renderBar() {
-  const max = Math.max(1, ...data.shops.map(r => r.revenue)), tip = $('#tip');
+  const max = Math.max(1, ...data.shops.map(r => r.revenue));
   $('#chart').innerHTML = '<div class="hbar">' + data.shops.map((r, i) => '<div class="nm" title="' + esc(r.shop + ' · ' + r.channel) + '">' + esc(r.shop) + '<small>' + esc(r.channel) + '</small></div>' +
     '<div class="tr" data-i="' + i + '"><i class="' + (r.channel === 'Shopee' ? '' : 'tt') + '" style="width:' + (100 * Math.max(r.revenue, 0) / max).toFixed(1) + '%"></i></div>' +
     '<div class="v">' + tr(r.revenue) + '</div>').join('') + '</div>' +
@@ -298,11 +331,29 @@ function renderBar() {
   document.querySelectorAll('#chart .tr').forEach(el => {
     el.onmousemove = e => {
       const r = data.shops[el.dataset.i];
-      tip.innerHTML = '<b>' + esc(r.shop) + '</b> · ' + esc(r.channel) + '<br>' + vnd(r.revenue) + ' · ' + pct(r.revenue, data.total.revenue) + '<br>' + fmt(r.orders) + ' đơn';
-      tip.style.display = 'block'; tip.style.left = (e.clientX + 14) + 'px'; tip.style.top = (e.clientY + 14) + 'px';
+      showTip(e, '<b>' + esc(r.shop) + '</b> · ' + esc(r.channel) + '<br>' + vnd(r.revenue) + ' · ' + pct(r.revenue, data.total.revenue) + '<br>' + fmt(r.orders) + ' đơn');
     };
-    el.onmouseleave = () => { tip.style.display = 'none'; };
+    el.onmouseleave = hideTip;
   });
+}
+
+/* ---------- chi tiet gian hang ---------- */
+const monthLabel = m => 'T' + Number(m.slice(5)) + '/' + m.slice(0, 4);
+const selectedShop = () => shopSel ? data.shops.find(r => r.channel + '|' + r.shop === shopSel) : null;
+function renderDetail() {
+  const shop = selectedShop(), months = (shop || data.total).months || [];
+  const max = Math.max(1, ...months.map(m => m.revenue));
+  $('#d-months').innerHTML = months.length ? '<div class="cols">' + months.map((m, i) => '<div class="c" data-i="' + i + '"><div class="v">' + tr(m.revenue) + '</div>' +
+      '<div class="b" style="height:' + (85 * Math.max(m.revenue, 0) / max).toFixed(1) + '%"></div></div>').join('') + '</div>' +
+    '<div class="cols-x">' + months.map(m => '<div><b>' + monthLabel(m.month) + '</b><br>' + fmt(m.orders) + ' đơn</div>').join('') + '</div>'
+    : '<div class="small muted">Không có dữ liệu</div>';
+  $('#d-months').querySelectorAll('.c').forEach(el => {
+    el.onmousemove = e => { const m = months[el.dataset.i]; showTip(e, '<b>' + monthLabel(m.month) + '</b><br>' + vnd(m.revenue) + '<br>' + fmt(m.orders) + ' đơn'); };
+    el.onmouseleave = hideTip;
+  });
+  const prods = shop ? data.products.filter(r => r.channel + '|' + r.shop === shopSel) : data.all_products;
+  const {slices, total} = topSlices(prods, r => r.name, r => '', r => 'Số lượng ' + fmt(r.qty), n => 'Các sản phẩm khác (' + n + ' SP)');
+  drawPie($('#d-pie'), slices, total, 'Tỷ trọng sản phẩm');
 }
 
 /* ---------- san pham ---------- */
@@ -311,7 +362,9 @@ function renderProducts() {
   let rows = shopSel ? data.products.filter(r => r.channel + '|' + r.shop === shopSel) : data.all_products;
   if (q) rows = rows.filter(r => norm(r.name + ' ' + r.sku).includes(q));
   const sum = rows.reduce((a, r) => a + r.revenue, 0);
-  $('#prod-sub').textContent = shopSel ? 'Gian hàng ' + shopSel.split('|')[1] + ' · ' + shopSel.split('|')[0] : 'Tổng tất cả các gian hàng';
+  const cur = selectedShop() || data.total;
+  $('#prod-sub').textContent = (shopSel ? 'Gian hàng ' + shopSel.split('|')[1] + ' · ' + shopSel.split('|')[0] : 'Tổng tất cả các gian hàng') +
+    ' — ' + fmt(cur.orders) + ' đơn, ' + vnd(cur.revenue);
   $('#count').textContent = fmt(rows.length) + ' sản phẩm · ' + vnd(sum);
   $('#prod-head').innerHTML = '<tr><th>Sản phẩm</th><th class="num">Số lượng</th><th class="num">Tổng doanh thu</th>' + (shopSel ? '' : '<th class="num hide-sm">Số gian bán</th>') + '</tr>';
   $('#prod').innerHTML = rows.slice(0, limit).map(r => '<tr><td>' + esc(r.name) + '<div class="sku">' + esc(r.sku) + '</div></td><td class="num">' + fmt(r.qty) +
@@ -319,7 +372,7 @@ function renderProducts() {
     '<tr><td colspan="4" class="empty">Không có sản phẩm</td></tr>';
   $('#more').innerHTML = rows.length > limit ? '<button id="more-btn">Xem thêm (' + fmt(rows.length - limit) + ')</button>' : '';
 }
-$('#shop').onchange = e => { shopSel = e.target.value; limit = 100; renderProducts(); };
+$('#shop').onchange = e => { shopSel = e.target.value; limit = 100; renderDetail(); renderProducts(); };
 $('#q').oninput = () => { limit = 100; renderProducts(); };
 document.addEventListener('click', e => { if (e.target.id === 'more-btn') { limit += 200; renderProducts(); } });
 

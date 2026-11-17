@@ -80,7 +80,25 @@ def line_revenue(li):
     return float(unit) * line_qty(li)
 
 
+def month_of(order):
+    """Thang (YYYY-MM) theo gio VN cua ngay tao don."""
+    raw = (order.get("created_on") or "").replace("Z", "+00:00")
+    try:
+        return datetime.fromisoformat(raw).astimezone(VN).strftime("%Y-%m")
+    except ValueError:
+        return raw[:7]
+
+
+def months_between(start, end):
+    out, y, m = [], start.year, start.month
+    while (y, m) <= (end.year, end.month):
+        out.append(f"{y:04d}-{m:02d}")
+        y, m = (y + 1, 1) if m == 12 else (y, m + 1)
+    return out
+
+
 def build_report(orders, start, end):
+    months = months_between(start, end)
     shops = {}                                  # (kenh, gian) -> tong
     products = defaultdict(lambda: {"qty": 0, "revenue": 0.0})   # (kenh, gian, sku, ten)
     all_products = defaultdict(lambda: {"qty": 0, "revenue": 0.0, "shops": set()})  # (sku, ten)
@@ -90,7 +108,8 @@ def build_report(orders, start, end):
         key = shop_of(o)
         if not key:
             continue
-        s = shops.setdefault(key, {"channel": key[0], "shop": key[1], "orders": 0, "revenue": 0.0, "cancelled": 0})
+        s = shops.setdefault(key, {"channel": key[0], "shop": key[1], "orders": 0, "revenue": 0.0, "cancelled": 0,
+                                   "months": {m: {"orders": 0, "revenue": 0.0} for m in months}})
         if is_cancelled(o):
             s["cancelled"] += 1
             cancelled += 1
@@ -98,6 +117,9 @@ def build_report(orders, start, end):
         revenue = order_revenue(o)
         s["orders"] += 1
         s["revenue"] += revenue
+        mo = s["months"].setdefault(month_of(o), {"orders": 0, "revenue": 0.0})
+        mo["orders"] += 1
+        mo["revenue"] += revenue
         lines = [li for li in o.get("line_items", []) if line_qty(li) > 0]
         # Giam gia cap don (voucher shop...) khong nam trong don gia tung dong -> chia theo ty le
         # de tong doanh thu san pham khop tong doanh thu gian hang
@@ -117,6 +139,12 @@ def build_report(orders, start, end):
             a["revenue"] += rev
             a["shops"].add(key[1])
     shop_rows = sorted(shops.values(), key=lambda r: -r["revenue"])
+    for r in shop_rows:  # {thang: ...} -> danh sach theo thu tu thang
+        r["months"] = [{"month": m, **v} for m, v in sorted(r["months"].items())]
+    total_months = [{"month": m,
+                     "orders": sum(x["orders"] for r in shop_rows for x in r["months"] if x["month"] == m),
+                     "revenue": sum(x["revenue"] for r in shop_rows for x in r["months"] if x["month"] == m)}
+                    for m in months]
     prod_rows = sorted(({"channel": c, "shop": sh, "sku": names[k][0], "name": names[k][1], **v}
                         for (c, sh, k), v in products.items()),
                        key=lambda r: (-shops[(r["channel"], r["shop"])]["revenue"], -r["revenue"]))
@@ -127,7 +155,7 @@ def build_report(orders, start, end):
         "from": f"{start:%Y-%m-%d}", "to": f"{end:%Y-%m-%d}",
         "generated_at": datetime.now(VN).strftime("%Y-%m-%d %H:%M"),
         "total": {"orders": sum(r["orders"] for r in shop_rows), "revenue": sum(r["revenue"] for r in shop_rows),
-                  "cancelled": cancelled, "shops": len(shop_rows)},
+                  "cancelled": cancelled, "shops": len(shop_rows), "months": total_months},
         "shops": shop_rows, "products": prod_rows, "all_products": all_rows,
     }
 
@@ -274,6 +302,78 @@ def to_xlsx(report):
           [[r["sku"], r["name"], r["qty"], round(r["revenue"]), r["shops"]] for r in report["all_products"]],
           [None, None, count, money, count], [14, 64, 10, 20, 14])
     ws.auto_filter.ref = f"A5:E{ws.max_row}"
+
+    # 3. Bieu do tung gian hang: doanh thu theo thang (cot) + ty trong san pham (tron)
+    ws = wb.create_sheet("3. Biểu đồ từng gian")
+    ws.append(["Biểu đồ từng gian hàng"]); ws["A1"].font = Font(bold=True, size=14)
+    ws.append([period]); ws.append([note]); ws["A3"].font = Font(italic=True, color="71717A")
+    for col, w in zip("ABCDEFG", (12, 10, 18, 2, 46, 18, 10)):
+        ws.column_dimensions[col].width = w
+    t = report["total"]
+    blocks = [("Tất cả gian hàng", "", t, report["all_products"])] + [
+        (r["shop"], r["channel"], r, [p for p in report["products"] if p["shop"] == r["shop"] and p["channel"] == r["channel"]])
+        for r in report["shops"] if r["revenue"] > 0]
+    BLOCK = 18  # so dong moi khoi (du cho bieu do cao 7cm)
+    for n, (name, channel, s, prods) in enumerate(blocks):
+        b = 5 + n * BLOCK
+        vn = lambda x: f"{round(x):,}".replace(",", ".")
+        c = ws.cell(b, 1, f"{name}{' · ' + channel if channel else ''} — {vn(s['orders'])} đơn, {vn(s['revenue'])} đ")
+        c.font = Font(bold=True, size=12)
+        # bang thang
+        for j, h in enumerate(["Tháng", "Số đơn", "Doanh thu (đ)"], 1):
+            c = ws.cell(b + 1, j, h)
+            c.font, c.fill, c.border = head_font, head_fill, box
+        for k, m in enumerate(s["months"], b + 2):
+            for j, (val, f) in enumerate([(f"T{int(m['month'][5:])}/{m['month'][:4]}", None), (m["orders"], count),
+                                          (round(m["revenue"]), money)], 1):
+                c = ws.cell(k, j, val)
+                c.border = box
+                if f:
+                    c.number_format = f
+        m_last = b + 1 + len(s["months"])
+        # bang ty trong san pham: 5 SP lon nhat + cac SP khac
+        prods = [p for p in prods if p["revenue"] > 0]
+        rows = [(p["name"], p["revenue"]) for p in prods[:PIE_TOP]]
+        if len(prods) > PIE_TOP:
+            rows.append((f"Các sản phẩm khác ({len(prods) - PIE_TOP} SP)", sum(p["revenue"] for p in prods[PIE_TOP:])))
+        tot = sum(v for _, v in rows) or 1
+        for j, h in enumerate(["Sản phẩm", "Doanh thu (đ)", "Tỷ trọng"], 5):
+            c = ws.cell(b + 1, j, h)
+            c.font, c.fill, c.border = head_font, head_fill, box
+        for k, (pname, v) in enumerate(rows, b + 2):
+            for j, (val, f) in enumerate([(pname, None), (round(v), money), (v / tot, "0.0%")], 5):
+                c = ws.cell(k, j, val)
+                c.border = box
+                if f:
+                    c.number_format = f
+        p_last = b + 1 + len(rows)
+
+        bar = BarChart()
+        bar.title = "Doanh thu theo tháng"
+        bar.legend = None
+        bar.y_axis.numFmt = "#,##0"
+        bar.y_axis.majorGridlines = None
+        bar.add_data(Reference(ws, min_col=3, min_row=b + 1, max_row=m_last), titles_from_data=True)
+        bar.set_categories(Reference(ws, min_col=1, min_row=b + 2, max_row=m_last))
+        bar.series[0].graphicalProperties.solidFill = "3F3F46"
+        bar.dataLabels = DataLabelList()
+        bar.dataLabels.showVal = True
+        bar.height, bar.width = 7, 12
+        ws.add_chart(bar, f"I{b}")
+        if rows:
+            pie = PieChart()
+            pie.title = "Tỷ trọng sản phẩm"
+            pie.add_data(Reference(ws, min_col=6, min_row=b + 1, max_row=p_last), titles_from_data=True)
+            pie.set_categories(Reference(ws, min_col=5, min_row=b + 2, max_row=p_last))
+            pie.dataLabels = DataLabelList()
+            pie.dataLabels.showPercent = True
+            for k, color in enumerate(PIE_COLORS[:len(rows)]):
+                pt = DataPoint(idx=k)
+                pt.graphicalProperties.solidFill = color
+                pt.graphicalProperties.line.solidFill = "FFFFFF"
+                pie.series[0].dPt.append(pt)
+            pie.height, pie.width = 7, 14
+            ws.add_chart(pie, f"P{b}")
 
     buf = io.BytesIO()
     wb.save(buf)
