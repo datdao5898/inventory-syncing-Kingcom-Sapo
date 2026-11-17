@@ -15,6 +15,8 @@ g() { runuser -u "$APP_USER" -- git -C "$APP_DIR" "$@"; }
 before=$(g rev-parse --short HEAD)
 g pull --ff-only
 after=$(g rev-parse --short HEAD)
+# Thu vien xuat Excel (trang Doanh thu san); chi cai neu chua co
+python3 -c 'import openpyxl' 2>/dev/null || { apt-get update -qq && apt-get install -y -qq python3-openpyxl >/dev/null; }
 sed "s#/opt/sapo_haravan_sync#$APP_DIR#g" "$APP_DIR/deploy/sync-tonkho.service" > /etc/systemd/system/$SERVICE.service
 systemctl daemon-reload
 systemctl restart "$SERVICE"

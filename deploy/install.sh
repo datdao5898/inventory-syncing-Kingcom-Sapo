@@ -16,7 +16,7 @@ echo "==> Thu muc ung dung: $APP_DIR"
 
 echo "==> Cai goi can thiet"
 apt-get update -qq
-apt-get install -y -qq git python3 ca-certificates >/dev/null
+apt-get install -y -qq git python3 python3-openpyxl ca-certificates >/dev/null  # openpyxl: xuat Excel doanh thu san
 python3 -c 'import sys; assert sys.version_info >= (3, 8), "Can Python 3.8+"'
 
 echo "==> Tao user he thong $APP_USER"

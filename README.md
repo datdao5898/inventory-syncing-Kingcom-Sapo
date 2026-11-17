@@ -27,3 +27,4 @@ Báo cáo nằm trong `reports/`, chỉ gồm các sản phẩm cần/đã cập
 - Nhiều web Haravan dùng chung 1 Sapo: khai báo `SITES=kingcom,newlite` và `NEWLITE_HARAVAN_TOKEN`, `NEWLITE_LOCATION_MAP` (xem `.env.example`). Web đầu tiên vẫn dùng `HARAVAN_TOKEN` / `LOCATION_MAP`. Mỗi lần chạy tải Sapo 1 lần rồi cập nhật từng web; web lỗi không làm hỏng web khác. Báo cáo mỗi web nằm ở `reports/<web>/`. Chạy riêng 1 web: `python sync.py --site newlite`.
 - Tồn âm trên Sapo được đẩy sang Haravan là 0.
 - Sapo app chỉ cần quyền đọc Tồn kho + Chi nhánh (không cần quyền Sản phẩm).
+- Trang web **Doanh thu sàn** (`sales.py`): lấy đơn Shopee/TikTok Shop từ Sapo theo khoảng ngày, tổng hợp theo gian hàng và theo sản phẩm, xuất Excel (kèm biểu đồ + 3 cột để trống cho số liệu quảng cáo). Không tính đơn huỷ; doanh thu đã trừ tiền hoàn. Cần quyền đọc Đơn hàng trên Sapo và thư viện `openpyxl` (`update.sh` tự cài). Chạy tay: `python sales.py 2026-09-01 2026-11-30`.

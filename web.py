@@ -15,6 +15,7 @@ from datetime import datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, unquote, urlparse
 
+import sales
 import sync
 
 SETTINGS_FILE = os.path.join(sync.BASE_DIR, "settings.json")
@@ -174,6 +175,52 @@ def start_job(name, keys):
     return True
 
 
+# ---------------------------------------------------------------- doanh thu san
+
+class SalesJob:
+    """Lay bao cao doanh thu San trong luong nen (1 lan lay ~30 trang don, mat 1-2 phut)."""
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.running = False
+        self.range = None
+        self.progress = (0, 0)
+        self.error = None
+        self.report = None
+
+    def start(self, start, end, fresh):
+        with self.lock:
+            if self.running:
+                return False
+            self.running, self.range, self.progress, self.error = True, (start, end), (0, 0), None
+
+        def worker():
+            try:
+                sync.log.info("===== Doanh thu sàn: %s → %s =====", start, end)
+                self.report = sales.get_report(start, end, self.set_progress, fresh)
+                t = self.report["total"]
+                sync.log.info("Doanh thu sàn: %s gian hàng, %s đơn", t["shops"], t["orders"])
+            except BaseException as e:
+                sync.log.error("LỖI doanh thu sàn: %s", e)
+                self.error = friendly_error(e).replace("Sapo/Haravan", "Sapo")
+            finally:
+                self.running = False
+
+        threading.Thread(target=worker, daemon=True).start()
+        return True
+
+    def set_progress(self, done, total):
+        self.progress = (done, total)
+
+    def status(self):
+        r = self.report
+        return {"running": self.running, "progress": list(self.progress), "error": self.error,
+                "range": [f"{d:%Y-%m-%d}" for d in self.range] if self.range else None,
+                "report": r if r and not self.running else None}
+
+
+sales_job = SalesJob()
+
+
 def scheduler():
     while True:
         s = state.settings
@@ -262,6 +309,20 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/api/history":
             key = self.site().key
             self.send_json([e for e in state.history if e.get("site") == key])
+        elif path == "/api/sales":
+            self.send_json(sales_job.status())
+        elif path == "/api/sales.xlsx":
+            r = sales_job.report
+            if not r or sales_job.running:
+                self.send(404, "Chua co du lieu, hay bam Lay du lieu truoc", "text/plain; charset=utf-8")
+                return
+            try:
+                data = sales.to_xlsx(r)
+            except ImportError:
+                self.send(500, "May chu thieu thu vien openpyxl. Hay bao David Dao.", "text/plain; charset=utf-8")
+                return
+            self.send(200, data, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                      {"Content-Disposition": f'attachment; filename="{sales.xlsx_name(r)}"'})
         elif path.startswith("/reports/"):
             parts = unquote(path).split("/")  # /reports/<web>/<file>.csv
             key, name = (parts[2], parts[3]) if len(parts) == 4 else ("", "")
@@ -285,6 +346,17 @@ class Handler(BaseHTTPRequestHandler):
             job = path.rsplit("/", 1)[1]
             # Kiem tra ket noi: tat ca cac web; kiem tra / cap nhat ton: web dang xem
             ok = start_job(job, sync.site_keys() if job == "check" else [self.site().key])
+            self.send_json({"ok": ok}, 200 if ok else 409)
+        elif path == "/api/sales":
+            try:
+                start, end = sales.parse_day(body.get("from", "")), sales.parse_day(body.get("to", ""))
+            except ValueError:
+                self.send_json({"ok": False, "error": "Ngày không hợp lệ"}, 400)
+                return
+            if start > end or (end - start).days > 366:
+                self.send_json({"ok": False, "error": "Khoảng ngày không hợp lệ (tối đa 1 năm)"}, 400)
+                return
+            ok = sales_job.start(start, end, bool(body.get("fresh")))
             self.send_json({"ok": ok}, 200 if ok else 409)
         elif path == "/api/settings":
             site = self.site()

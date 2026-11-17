@@ -173,6 +173,21 @@ pre { background:#fafafa; color:var(--text2); border:1px solid var(--line); bord
 .modal .actions { display:flex; justify-content:flex-end; gap:8px; margin-top:18px; }
 .toast { position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:var(--ink); color:#fff; padding:10px 16px; border-radius:6px; display:none; z-index:30; max-width:90vw; font-size:13px; }
 
+/* doanh thu san */
+.sales-form { display:flex; flex-wrap:wrap; gap:10px; align-items:flex-end; }
+.sales-form label { display:flex; flex-direction:column; gap:4px; font-size:12.5px; color:var(--muted); }
+input[type=date] { font:inherit; padding:6px 10px; border:1px solid var(--line); border-radius:6px; background:#fff; color:var(--text); }
+.hbar { display:grid; grid-template-columns:minmax(120px, 220px) 1fr auto; gap:6px 12px; align-items:center; font-size:13px; }
+.hbar .nm { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text2); }
+.hbar .nm small { color:var(--faint); margin-left:6px; }
+.hbar .tr { height:14px; background:var(--grid); border-radius:3px; overflow:hidden; }
+.hbar .tr i { display:block; height:100%; background:var(--series); border-radius:3px; }
+.hbar .tr i.tt { background:var(--warn); }
+.hbar .v { font-variant-numeric:tabular-nums; text-align:right; white-space:nowrap; }
+.progress { height:6px; background:var(--grid); border-radius:6px; overflow:hidden; margin-top:10px; }
+.progress i { display:block; height:100%; background:var(--series); transition:width .3s; }
+@media (max-width:640px) { .hbar { grid-template-columns:minmax(80px, 120px) 1fr auto; } .hbar .nm small { display:none; } }
+
 /* responsive */
 @media (max-width:1180px) { .g-kpi { grid-template-columns:repeat(3, minmax(0,1fr)); } }
 @media (max-width:960px) {
@@ -209,6 +224,7 @@ pre { background:#fafafa; color:var(--text2); border:1px solid var(--line); bord
   <symbol id="i-link" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></symbol>
   <symbol id="i-down" viewBox="0 0 24 24"><path d="M12 4v12M7 11l5 5 5-5M4 20h16"/></symbol>
   <symbol id="i-book" viewBox="0 0 24 24"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2zM4 21V5M8 7h7"/></symbol>
+  <symbol id="i-chart" viewBox="0 0 24 24"><path d="M4 20V4M4 20h16M8 16v-5M12 16V8M16 16v-3"/></symbol>
   <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></symbol>
 </svg>
 
@@ -219,6 +235,7 @@ pre { background:#fafafa; color:var(--text2); border:1px solid var(--line); bord
   <nav>
     <a href="#tong-quan" data-page="tong-quan"><svg class="i"><use href="#i-home"/></svg><span class="t">Tổng quan</span></a>
     <a href="#san-pham" data-page="san-pham"><svg class="i"><use href="#i-diff"/></svg><span class="t">Sản phẩm lệch nhau</span><span class="badge" id="nav-badge" style="display:none"></span></a>
+    <a href="#doanh-thu" data-page="doanh-thu"><svg class="i"><use href="#i-chart"/></svg><span class="t">Doanh thu sàn</span></a>
     <a href="#lich-su" data-page="lich-su"><svg class="i"><use href="#i-clock"/></svg><span class="t">Lịch sử</span></a>
     <a href="#huong-dan" data-page="huong-dan"><svg class="i"><use href="#i-book"/></svg><span class="t">Hướng dẫn</span></a>
   </nav>
@@ -313,6 +330,44 @@ pre { background:#fafafa; color:var(--text2); border:1px solid var(--line); bord
       </div>
       <div class="wrap"><table><thead id="cmp-head"></thead><tbody id="cmp-body"></tbody></table></div>
       <div class="more" id="cmp-more"></div>
+    </div>
+  </section>
+
+  <!-- ================= DOANH THU SAN ================= -->
+  <section class="page" id="page-doanh-thu">
+    <div class="card" style="margin-bottom:12px">
+      <div class="sales-form">
+        <label>Từ ngày<input type="date" id="s-from" value="2026-09-01"></label>
+        <label>Đến ngày<input type="date" id="s-to" value="2026-11-30"></label>
+        <button class="primary" id="s-run"><svg class="i"><use href="#i-search"/></svg>Lấy dữ liệu</button>
+        <a class="btn" id="s-xlsx" href="api/sales.xlsx" style="display:none"><svg class="i"><use href="#i-down"/></svg>Tải Excel</a>
+      </div>
+      <div id="s-status" class="small muted" style="margin-top:10px">Lấy đơn Shopee, TikTok Shop từ Sapo theo ngày tạo đơn. Mất khoảng 1–2 phút.</div>
+    </div>
+    <div id="s-result" style="display:none">
+      <div class="grid g-kpi" id="s-kpis" style="grid-template-columns:repeat(4, minmax(0,1fr))"></div>
+      <div class="card" style="margin-bottom:12px">
+        <div class="card-h"><div><h2>1. Tổng doanh thu theo gian hàng</h2><p>Không tính đơn đã huỷ · doanh thu đã trừ tiền hoàn trả hàng</p></div>
+          <div class="legend"><span><i style="background:var(--series)"></i>Shopee</span><span><i style="background:var(--warn)"></i>TikTok Shop</span></div></div>
+        <div class="hbar" id="s-chart"></div>
+        <div class="wrap"><table>
+          <thead><tr><th>Gian hàng</th><th>Kênh</th><th class="num">Số đơn</th><th class="num">Tổng doanh thu</th><th class="num hide-sm">Đơn huỷ</th></tr></thead>
+          <tbody id="s-shops"></tbody>
+        </table></div>
+      </div>
+      <div class="card">
+        <div class="card-h"><div><h2>2. Doanh thu theo sản phẩm</h2><p id="s-prod-sub"></p></div></div>
+        <div class="row">
+          <select id="s-shop"></select>
+          <input type="search" id="s-q" placeholder="Tìm tên sản phẩm hoặc mã SKU...">
+          <span class="small muted" id="s-count"></span>
+        </div>
+        <div class="wrap"><table>
+          <thead id="s-prod-head"></thead><tbody id="s-prod"></tbody>
+        </table></div>
+        <div class="more" id="s-more"></div>
+      </div>
+      <p class="small muted" style="margin-top:12px">File Excel gồm 3 sheet: theo gian hàng (kèm biểu đồ và 3 cột để trống cho Yu điền: <b>Ngân sách quảng cáo</b>, <b>Tổng doanh thu từ Shopee ads</b>, <b>Tổng đơn hàng</b>), sản phẩm theo từng gian, sản phẩm tổng tất cả gian.</p>
     </div>
   </section>
 
@@ -453,7 +508,7 @@ function ask(title, html, yesLabel) {
 async function api(path, opts) { const r = await fetch(path, opts); return {status: r.status, data: await r.json().catch(() => null)}; }
 
 /* ---------- navigation ---------- */
-const PAGES = {'tong-quan': 'Tổng quan', 'san-pham': 'Sản phẩm lệch nhau', 'lich-su': 'Lịch sử', 'huong-dan': 'Hướng dẫn sử dụng'};
+const PAGES = {'tong-quan': 'Tổng quan', 'san-pham': 'Sản phẩm lệch nhau', 'doanh-thu': 'Doanh thu sàn', 'lich-su': 'Lịch sử', 'huong-dan': 'Hướng dẫn sử dụng'};
 function showPage() {
   let page = (location.hash || '#tong-quan').slice(1);
   if (!PAGES[page]) page = 'tong-quan';
@@ -463,6 +518,9 @@ function showPage() {
   if (page === 'tong-quan') renderChart();  // svg an thi khong do duoc chieu rong
   if (page === 'san-pham') loadCompare();
   if (page === 'lich-su') renderHistory();
+  $('.top .actions').style.display = page === 'doanh-thu' ? 'none' : '';
+  if (page === 'doanh-thu') { $('#page-sub').textContent = 'Shopee, TikTok Shop · số liệu từ đơn hàng Sapo'; loadSales(); }
+  else if (status) renderBanner();  // tra lai dong phu cua trang ton kho
   window.scrollTo(0, 0);
 }
 window.addEventListener('hashchange', showPage);
@@ -522,7 +580,7 @@ function renderBanner() {
   }
   b.className = 'banner ' + cls;
   b.innerHTML = '<div class="ic">' + ic + '</div><div class="txt"><b>' + title + '</b><span>' + text + '</span></div>' + action;
-  $('#page-sub').textContent = 'Sapo → Haravan ' + siteName() + (lr ? ' · kiểm tra lần cuối ' + lr.time : '');
+  if (location.hash !== '#doanh-thu') $('#page-sub').textContent = 'Sapo → Haravan ' + siteName() + (lr ? ' · kiểm tra lần cuối ' + lr.time : '');
 }
 
 /* ---------- tong quan: kpi ---------- */
@@ -781,4 +839,78 @@ function renderHistory() {
 }
 
 showPage(); refresh(); setInterval(refresh, 3000);
+
+/* ---------- doanh thu san ---------- */
+let sales = null, salesShop = '', salesLimit = 100, salesTimer = null;
+const vnd = n => fmt(Math.round(n)) + ' đ';
+const dmy = d => d.split('-').reverse().join('/');
+async function loadSales() {
+  const r = (await api('api/sales').catch(() => ({}))).data;
+  if (!r) return;
+  clearTimeout(salesTimer);
+  $('#s-run').disabled = r.running;
+  if (r.running) {
+    const [n, t] = r.progress;
+    $('#s-xlsx').style.display = 'none';
+    $('#s-status').innerHTML = '<div class="row"><div class="spinner"></div>Đang lấy đơn hàng từ Sapo' + (t ? ': ' + fmt(n) + ' / ' + fmt(t) + ' đơn' : '...') + '</div>' +
+      '<div class="progress"><i style="width:' + (t ? Math.round(100 * n / t) : 3) + '%"></i></div>';
+    salesTimer = setTimeout(loadSales, 1500);
+    return;
+  }
+  if (r.error) { $('#s-status').innerHTML = '<span style="color:var(--bad)">' + esc(r.error) + '</span>'; return; }
+  if (!r.report) return;
+  if (!sales || sales.generated_at !== r.report.generated_at || sales.from !== r.report.from || sales.to !== r.report.to) {
+    sales = r.report; salesShop = ''; salesLimit = 100;
+  }
+  $('#s-from').value = sales.from; $('#s-to').value = sales.to;
+  $('#s-status').textContent = 'Kỳ ' + dmy(sales.from) + ' – ' + dmy(sales.to) + ' · dữ liệu lấy lúc ' + sales.generated_at.slice(11) + ' ngày ' + dmy(sales.generated_at.slice(0, 10)) + '. Bấm "Lấy dữ liệu" lần nữa để lấy số mới nhất.';
+  $('#s-xlsx').style.display = '';
+  renderSales();
+}
+async function runSales() {
+  const from = $('#s-from').value, to = $('#s-to').value;
+  if (!from || !to || from > to) { toast('Chọn khoảng ngày hợp lệ'); return; }
+  const fresh = !!(sales && sales.from === from && sales.to === to);  // bam lai cung ky = lay so moi
+  const r = await api('api/sales', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({from, to, fresh})});
+  if (r.status === 409) toast('Đang lấy dữ liệu, vui lòng đợi.');
+  else if (!r.data || !r.data.ok) { toast((r.data && r.data.error) || 'Có lỗi'); return; }
+  loadSales();
+}
+$('#s-run').onclick = runSales;
+function renderSales() {
+  const s = sales, t = s.total;
+  $('#s-result').style.display = '';
+  $('#s-kpis').innerHTML =
+    kpi('#doanh-thu', 'chart', 'Tổng doanh thu', fmt(Math.round(t.revenue / 1e6)) + ' tr', vnd(t.revenue)) +
+    kpi('#doanh-thu', 'box', 'Số đơn hàng', fmt(t.orders), 'Không tính đơn huỷ') +
+    kpi('#doanh-thu', 'web', 'Gian hàng có đơn', fmt(t.shops), 'Shopee + TikTok Shop') +
+    kpi('#doanh-thu', 'alert', 'Đơn đã huỷ', fmt(t.cancelled), 'Không tính vào doanh thu');
+  const max = Math.max(1, ...s.shops.map(r => r.revenue));
+  $('#s-chart').innerHTML = s.shops.map(r => '<div class="nm" title="' + esc(r.shop + ' · ' + r.channel) + '">' + esc(r.shop) + '<small>' + esc(r.channel) + '</small></div>' +
+    '<div class="tr"><i class="' + (r.channel === 'Shopee' ? '' : 'tt') + '" style="width:' + (100 * Math.max(r.revenue, 0) / max).toFixed(1) + '%"></i></div>' +
+    '<div class="v">' + fmt(Math.round(r.revenue / 1e6)) + ' tr</div>').join('');
+  $('#s-shops').innerHTML = s.shops.map(r => '<tr><td>' + esc(r.shop) + '</td><td>' + esc(r.channel) + '</td><td class="num">' + fmt(r.orders) +
+    '</td><td class="num">' + vnd(r.revenue) + '</td><td class="num hide-sm muted">' + fmt(r.cancelled) + '</td></tr>').join('') +
+    '<tr><td><b>Tổng cộng</b></td><td></td><td class="num"><b>' + fmt(t.orders) + '</b></td><td class="num"><b>' + vnd(t.revenue) + '</b></td><td class="num hide-sm muted">' + fmt(t.cancelled) + '</td></tr>';
+  $('#s-shop').innerHTML = '<option value="">Tổng tất cả gian hàng</option>' +
+    s.shops.map(r => '<option value="' + esc(r.channel + '|' + r.shop) + '">' + esc(r.shop) + ' (' + esc(r.channel) + ')</option>').join('');
+  $('#s-shop').value = salesShop;
+  renderSalesProducts();
+}
+function renderSalesProducts() {
+  const s = sales, q = norm($('#s-q').value.trim());
+  let rows = salesShop ? s.products.filter(r => r.channel + '|' + r.shop === salesShop) : s.all_products;
+  if (q) rows = rows.filter(r => norm(r.name + ' ' + r.sku).includes(q));
+  const sum = rows.reduce((a, r) => a + r.revenue, 0);
+  $('#s-prod-sub').textContent = salesShop ? 'Gian hàng ' + salesShop.split('|')[1] + ' · ' + salesShop.split('|')[0] : 'Tổng tất cả các gian hàng';
+  $('#s-count').textContent = fmt(rows.length) + ' sản phẩm · ' + vnd(sum);
+  $('#s-prod-head').innerHTML = '<tr><th>Sản phẩm</th><th class="num">Số lượng</th><th class="num">Tổng doanh thu</th>' + (salesShop ? '' : '<th class="num hide-sm">Số gian bán</th>') + '</tr>';
+  $('#s-prod').innerHTML = rows.slice(0, salesLimit).map(r => '<tr><td>' + esc(r.name) + '<div class="sku">' + esc(r.sku) + '</div></td><td class="num">' + fmt(r.qty) +
+    '</td><td class="num">' + vnd(r.revenue) + '</td>' + (salesShop ? '' : '<td class="num hide-sm muted">' + r.shops + '</td>') + '</tr>').join('') ||
+    '<tr><td colspan="4" class="empty">Không có sản phẩm</td></tr>';
+  $('#s-more').innerHTML = rows.length > salesLimit ? '<button id="s-more-btn">Xem thêm (' + fmt(rows.length - salesLimit) + ')</button>' : '';
+}
+$('#s-shop').onchange = e => { salesShop = e.target.value; salesLimit = 100; renderSalesProducts(); };
+$('#s-q').oninput = () => { salesLimit = 100; renderSalesProducts(); };
+document.addEventListener('click', e => { if (e.target.id === 's-more-btn') { salesLimit += 200; renderSalesProducts(); } });
 </script></body></html>
