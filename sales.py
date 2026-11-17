@@ -12,6 +12,7 @@ import io
 import os
 import sys
 import time
+import zipfile
 from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
 
@@ -401,7 +402,22 @@ def to_xlsx(report):
 
     buf = io.BytesIO()
     wb.save(buf)
-    return buf.getvalue()
+    return fix_core_dates(buf.getvalue())
+
+
+def fix_core_dates(data):
+    """openpyxl ban cu (vd python3-openpyxl cua Ubuntu) ghi ngay tao file dang '...+00:00Z' - sai dinh dang,
+    Excel bao 'We found a problem with some content' va doi sua file. Sua lai thanh '...Z'."""
+    src = zipfile.ZipFile(io.BytesIO(data))
+    core = src.read("docProps/core.xml")
+    if b"+00:00Z" not in core:
+        return data
+    out = io.BytesIO()
+    with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as dst:
+        for item in src.infolist():
+            body = core.replace(b"+00:00Z", b"Z") if item.filename == "docProps/core.xml" else src.read(item.filename)
+            dst.writestr(item, body)
+    return out.getvalue()
 
 
 def xlsx_name(report):
