@@ -24,6 +24,8 @@ CHANNEL_NAMES = {"shopee": "Shopee", "tiktokshop": "TikTok Shop", "lazada": "Laz
 PIE_TOP = 10  # bieu do tron: 10 muc lon nhat + "Cac ... khac"
 # 10 mau phan loai (da kiem tra phan biet duoc ca voi nguoi mu mau) + xam cho "khac"; giong trang web
 PIE_COLORS = ["2A78D6", "EB6834", "1BAF7A", "EDA100", "E87BA4", "008300", "6250D6", "E34948", "0094C6", "B8650A", "B4B4BB"]
+TOP_MONTH = 10  # sheet tung gian: top 10 san pham ban chay moi thang
+PRODUCT_ROW_PT = 34  # chieu cao dong san pham: du cho ten 2 dong + chu thich 10 muc cua bieu do
 AD_COLUMNS = ["Ngân sách quảng cáo\n广告预算", "Tổng doanh thu từ Shopee ads\nShopee 广告销售额", "Tổng đơn hàng\n总订单数"]
 CACHE_SECONDS = 600
 _cache = {}
@@ -112,6 +114,7 @@ class Aggregator:
         self.products = defaultdict(lambda: [0, 0.0])    # (kenh, gian, sku) -> [so luong, doanh thu]
         self.all_products = defaultdict(lambda: [0, 0.0, set()])  # sku -> [so luong, doanh thu, {gian}]
         self.names = {}                                   # sku -> (sku goc, ten dau tien gap)
+        self.monthly = defaultdict(lambda: defaultdict(lambda: [0, 0.0]))  # (kenh, gian, thang) -> sku -> [sl, dt]
         self.cancelled = 0
 
     def add(self, o):
@@ -129,7 +132,8 @@ class Aggregator:
         revenue = order_revenue(o)
         s["orders"] += 1
         s["revenue"] += revenue
-        mo = s["months"].setdefault(month_of(o), [0, 0.0])
+        month = month_of(o)
+        mo = s["months"].setdefault(month, [0, 0.0])
         mo[0] += 1
         mo[1] += revenue
         lines = [li for li in o.get("line_items", []) if line_qty(li) > 0]
@@ -137,6 +141,7 @@ class Aggregator:
         # de tong doanh thu san pham khop tong doanh thu gian hang
         gross = sum(line_revenue(li) for li in lines)
         ratio = revenue / gross if gross > 0 else 0
+        monthly = self.monthly[(key[0], key[1], month)]
         for li in lines:
             qty, rev = line_qty(li), line_revenue(li) * ratio
             sku = (li.get("sku") or "").strip()
@@ -151,6 +156,9 @@ class Aggregator:
             a[0] += qty
             a[1] += rev
             a[2].add(key)
+            mp = monthly[pkey]
+            mp[0] += qty
+            mp[1] += rev
 
     def result(self):
         shops, names = self.shops, self.names
@@ -165,12 +173,17 @@ class Aggregator:
                            key=lambda r: (-shops[(r["channel"], r["shop"])]["revenue"], -r["revenue"]))
         all_rows = sorted(({"sku": names[k][0], "name": names[k][1], "qty": v[0], "revenue": v[1], "shops": len(v[2])}
                            for k, v in self.all_products.items()), key=lambda r: -r["revenue"])
+        # Top san pham tung thang cua tung gian (chi giu TOP_MONTH muc dau)
+        monthly_top = [{"channel": c, "shop": sh, "month": m,
+                        "top": [{"sku": names[k][0], "name": names[k][1], "qty": v[0], "revenue": v[1]}
+                                for k, v in sorted(prods.items(), key=lambda kv: -kv[1][1])[:TOP_MONTH]]}
+                       for (c, sh, m), prods in self.monthly.items()]
         return {
             "from": f"{self.start:%Y-%m-%d}", "to": f"{self.end:%Y-%m-%d}",
             "generated_at": datetime.now(VN).strftime("%Y-%m-%d %H:%M"),
             "total": {"orders": sum(r["orders"] for r in shop_rows), "revenue": sum(r["revenue"] for r in shop_rows),
                       "cancelled": self.cancelled, "shops": len(shop_rows), "months": total_months},
-            "shops": shop_rows, "products": prod_rows, "all_products": all_rows,
+            "shops": shop_rows, "products": prod_rows, "all_products": all_rows, "monthly_top": monthly_top,
         }
 
 
@@ -203,8 +216,6 @@ def get_report(start, end, progress=None, fresh=False):
 def to_xlsx(report):
     from openpyxl import Workbook
     from openpyxl.chart import BarChart, PieChart, Reference
-    from openpyxl.chart.label import DataLabelList
-    from openpyxl.chart.marker import DataPoint
     from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
     from openpyxl.utils import get_column_letter
 
@@ -225,22 +236,24 @@ def to_xlsx(report):
         c.font, c.fill, c.border = head_font, head_fill, box
         c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
 
-    def sheet(ws, title, headers, rows, formats, widths, yu_cols=0):
-        ws.append([title]); ws["A1"].font = Font(bold=True, size=14)
-        ws.append([period]); ws.append([note]); ws["A3"].font = Font(italic=True, color="71717A")
-        ws.append([])
-        ws.append(headers)
-        hr = ws.max_row
+    def sheet(ws, title, headers, rows, formats, widths, yu_cols=0, top=1):
+        ws.cell(top, 1, title).font = Font(bold=True, size=14)
+        ws.cell(top + 1, 1, period)
+        ws.cell(top + 2, 1, note).font = Font(italic=True, color="71717A")
+        hr = top + 4
+        for i, h in enumerate(headers, 1):
+            ws.cell(hr, i, h)
         for i, _ in enumerate(headers, 1):
             c = ws.cell(hr, i)
             c.font, c.fill, c.border = head_font, head_fill, box
             c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
             if i > len(headers) - yu_cols:
                 c.fill, c.font = PatternFill("solid", fgColor="A16207"), head_font
-        for r in rows:
-            ws.append(r)
+        for k, r in enumerate(rows, hr + 1):
+            for i, v in enumerate(r, 1):
+                ws.cell(k, i, v)
             for i, f in enumerate(formats, 1):
-                c = ws.cell(ws.max_row, i)
+                c = ws.cell(k, i)
                 c.border = box
                 if f:
                     c.number_format = f
@@ -254,56 +267,55 @@ def to_xlsx(report):
 
     wb = Workbook()
 
-    # 1. Tong theo gian hang + 3 cot de trong cho Yu
+    # ======== Tong Quan (theo file mau Report_Yu): bang gian hang + 3 cot de trong cho Yu, bieu do ben duoi
     ws = wb.active
-    ws.title = "1. Theo gian hàng 各店铺"
+    ws.title = "Tổng Quan"
     rows = [[r["shop"], r["channel"], r["orders"], round(r["revenue"]), None, None, None] for r in report["shops"]]
     hr = sheet(ws, "Tổng doanh thu theo gian hàng Sàn · 各电商平台店铺销售额",
                ["Gian hàng\n店铺", "Kênh bán hàng\n销售平台", "Số lượng đơn hàng\n订单数量", vnd_h] + AD_COLUMNS,
-               rows, [None, None, count, money, money, money, count], [34, 16, 14, 20, 20, 22, 16], yu_cols=3)
-    last = ws.max_row
+               rows, [None, None, count, money, money, money, count], [27, 22, 18, 20, 20, 22, 16], yu_cols=3, top=2)
+    last = hr + len(rows)
     t = report["total"]
-    ws.append(["TỔNG CỘNG · 合计", "", t["orders"], round(t["revenue"])] +
-              [f"=SUM({get_column_letter(i)}{hr + 1}:{get_column_letter(i)}{last})" for i in (5, 6, 7)])
+    total_row = last + 1
+    for i, v in enumerate(["TỔNG CỘNG · 合计", "", t["orders"], round(t["revenue"])] +
+                          [f"=SUM({get_column_letter(i)}{hr + 1}:{get_column_letter(i)}{last})" for i in (5, 6, 7)], 1):
+        ws.cell(total_row, i, v)
     for i, f in enumerate([None, None, count, money, money, money, count], 1):
-        c = ws.cell(ws.max_row, i)
+        c = ws.cell(total_row, i)
         c.font, c.border = bold, box
         if f:
             c.number_format = f
-    ws.cell(ws.max_row + 2, 1, "Các cột màu vàng để trống cho Yu điền số liệu quảng cáo. · 黄色列留空，由 Yu 填写广告数据。").font = Font(italic=True, color="A16207")
+    ws.cell(total_row + 1, 1, "Các cột màu vàng để trống cho Yu điền số liệu quảng cáo. · 黄色列留空，由 Yu 填写广告数据。").font = Font(italic=True, color="A16207")
+    chart_row = total_row + 3
+    ws.cell(chart_row, 2, "BIỂU ĐỒ · 图表").font = bold
     shops = [r for r in report["shops"] if r["revenue"] > 0]
     if shops:
-        # Bieu do tron (mac dinh): 10 gian lon nhat + "Cac gian khac", bang so lieu ngay canh
+        # Bang ty trong cho bieu do tron: 10 gian lon nhat + "Cac gian khac" (cot I-K, nhu file mau)
         top, rest = shops[:PIE_TOP], shops[PIE_TOP:]
         pie_rows = [(r["shop"] if r["channel"] == "Shopee" else f'{r["shop"]} ({r["channel"]})', r["revenue"]) for r in top]
         if rest:
             pie_rows.append((f"Các gian khác · 其他店铺 ({len(rest)})", sum(r["revenue"] for r in rest)))
         total = sum(v for _, v in pie_rows)
-        ws.cell(5, 9, "Tỷ trọng doanh thu · 销售额占比").font = bold
+        ws.cell(hr, 9, "Tỷ trọng doanh thu · 销售额占比").font = bold
         for j, h in enumerate(["Gian hàng\n店铺", rev_h, "Tỷ trọng\n占比"], 9):
-            head(ws.cell(6, j, h))
-        for k, (name, v) in enumerate(pie_rows, 7):
+            head(ws.cell(hr + 1, j, h))
+        for k, (name, v) in enumerate(pie_rows, hr + 2):
             for j, (val, f) in enumerate([(name, None), (round(v), money), (v / total, "0.0%")], 9):
                 c = ws.cell(k, j, val)
                 c.border = box
                 if f:
                     c.number_format = f
-        pie_last = 6 + len(pie_rows)
+        pie_last = hr + 1 + len(pie_rows)
         for j, w in zip("IJK", (32, 18, 10)):
             ws.column_dimensions[j].width = w
         pie = PieChart()
         pie.title = "Tỷ trọng doanh thu theo gian hàng · 各店铺销售额占比"
-        pie.add_data(Reference(ws, min_col=10, min_row=6, max_row=pie_last), titles_from_data=True)
-        pie.set_categories(Reference(ws, min_col=9, min_row=7, max_row=pie_last))
-        pie.dataLabels = DataLabelList()
-        pie.dataLabels.showPercent = True
-        for k, color in enumerate(PIE_COLORS[:len(pie_rows)]):
-            pt = DataPoint(idx=k)
-            pt.graphicalProperties.solidFill = color
-            pt.graphicalProperties.line.solidFill = "FFFFFF"
-            pie.series[0].dPt.append(pt)
-        pie.height, pie.width = 11, 18
-        ws.add_chart(pie, f"I{pie_last + 2}")
+        pie.add_data(Reference(ws, min_col=10, min_row=hr + 1, max_row=pie_last), titles_from_data=True)
+        pie.set_categories(Reference(ws, min_col=9, min_row=hr + 2, max_row=pie_last))
+        pie.dataLabels = only_percent()
+        color_points(pie, len(pie_rows))
+        pie.height, pie.width = 12, 24
+        ws.add_chart(pie, f"A{chart_row + 1}")
 
         chart = BarChart()
         chart.type = "bar"
@@ -313,98 +325,112 @@ def to_xlsx(report):
         chart.y_axis.majorGridlines = None
         chart.x_axis.scaling.orientation = "maxMin"  # gian hang lon nhat o tren
         chart.legend = None
+        chart.x_axis.delete = chart.y_axis.delete = False  # openpyxl 3.1 mac dinh an truc -> mat ten gian hang
+        chart.y_axis.crosses = "max"  # truc so o duoi khi dao thu tu gian hang
         chart.add_data(Reference(ws, min_col=4, min_row=hr, max_row=last), titles_from_data=True)
         chart.set_categories(Reference(ws, min_col=1, min_row=hr + 1, max_row=last))
         chart.series[0].graphicalProperties.solidFill = "3F3F46"
-        chart.height, chart.width = max(8, 0.75 * len(report["shops"]) + 3), 22
-        ws.add_chart(chart, f"I{pie_last + 26}")
+        chart.height, chart.width = max(12, 0.75 * len(report["shops"]) + 3), 22
+        ws.add_chart(chart, f"I{chart_row + 1}")
 
-    # 2a. San pham theo tung gian hang
-    ws = wb.create_sheet("2a. SP theo gian hàng 各店铺产品")
-    sheet(ws, "Doanh thu theo sản phẩm — chi tiết từng gian hàng · 各店铺产品销售额",
+    # ======== Moi gian hang 1 sheet (theo sheet "Ulanzi HN" cua file mau)
+    tops = {(m["channel"], m["shop"], m["month"]): m["top"] for m in report.get("monthly_top", [])}
+    one_year = len({m["month"][:4] for m in t["months"]}) <= 1
+    month_cell = lambda m: int(m[5:]) if one_year else f"{int(m[5:])}/{m[:4]}"
+    used_names = {"Tổng Quan"}
+    yellow = PatternFill("solid", fgColor="FFEB9C")    # kieu "Neutral" cua Excel nhu file mau
+    yellow_font = Font(color="9C5700")
+    center = Alignment(horizontal="center", vertical="center", wrap_text=True)
+
+    def shop_head(c, text):
+        c.value, c.font, c.fill, c.border, c.alignment = text, yellow_font, yellow, box, center
+
+    def shop_cell(c, value, fmt=None, size=12):
+        c.value, c.border, c.alignment, c.font = value, box, center, Font(size=size)
+        if fmt:
+            c.number_format = fmt
+
+    for r in report["shops"]:
+        if r["orders"] <= 0:
+            continue
+        channel_ads = "Shopee" if r["channel"] == "Shopee" else r["channel"].replace(" Shop", "")
+        name = sheet_name(r["shop"], r["channel"], used_names)
+        ws = wb.create_sheet(name)
+        for col, w in zip("ABCDEFG", (14, 62, 18, 20, 24, 24, 4)):
+            ws.column_dimensions[col].width = w
+        # tieu de
+        ws.merge_cells("A2:F2")
+        c = ws["A2"]
+        c.value = (f"REPORT DOANH THU VÀ CHI PHÍ {channel_ads.upper()} ADS {r['shop'].upper()}\n"
+                   f"{r['shop']} 销售额与 {channel_ads} 广告费用报告")
+        c.font, c.alignment = Font(bold=True, size=12), Alignment(horizontal="left", vertical="center", wrap_text=True)
+        ws.row_dimensions[2].height = 36
+        ws["A3"] = f"{r['shop']} · {r['channel']} · {period}"
+        ws["A3"].font = Font(italic=True, color="71717A")
+        # bang theo thang
+        heads = ["Tháng\n月份", "Doanh Thu\n销售额", "Tổng Đơn Hàng\n订单总数", f"Chi phí {channel_ads} ads\n{channel_ads} 广告费用",
+                 f"Doanh Thu Từ {channel_ads} Ads\n{channel_ads} 广告销售额", "Tổng Đơn Hàng Từ Ads\n广告订单数"]
+        for j, h in enumerate(heads, 1):
+            shop_head(ws.cell(4, j), h)
+        ws.row_dimensions[4].height = 34
+        row = 5
+        for m in r["months"]:
+            shop_cell(ws.cell(row, 1), month_cell(m["month"]))
+            shop_cell(ws.cell(row, 2), round(m["revenue"]), "#,##0")
+            shop_cell(ws.cell(row, 3), m["orders"], "#,##0")
+            for j in (4, 5, 6):  # Yu dien
+                shop_cell(ws.cell(row, j), None, '_(* #,##0_);_(* \\(#,##0\\);_(* "-"??_);_(@_)')
+            row += 1
+        # top 10 san pham ban chay tung thang
+        row += 1
+        ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=3)
+        c = ws.cell(row, 1, f"TOP {TOP_MONTH} SẢN PHẨM BÁN CHẠY TRONG THÁNG · 每月畅销产品前 {TOP_MONTH} 名")
+        c.font, c.alignment = Font(bold=True, size=12), Alignment(horizontal="left", vertical="center")
+        ws.row_dimensions[row].height = 30
+        row += 2
+        for j, h in enumerate(["Tháng\n月份", "Tên sản phẩm\n产品名称", "Số lượng\n数量", "Doanh thu\n销售额"], 1):
+            shop_head(ws.cell(row, j), h)
+        ws.row_dimensions[row].height = 34
+        ws.cell(row, 6, "BIỂU ĐỒ % CỦA TOP SP · 热销产品占比").font = bold
+        row += 1
+        for m in r["months"]:
+            items = tops.get((r["channel"], r["shop"], m["month"]), [])
+            first = row
+            n = TOP_MONTH  # moi thang dung du 10 dong de bieu do khong chong len nhau
+            for k in range(n):
+                it = items[k] if k < len(items) else None
+                shop_cell(ws.cell(row, 2), it["name"] if it else ("Không có đơn · 无订单" if k == 0 and not items else None))
+                shop_cell(ws.cell(row, 3), it["qty"] if it else None, "#,##0")
+                shop_cell(ws.cell(row, 4), round(it["revenue"]) if it else None, "#,##0")
+                ws.row_dimensions[row].height = PRODUCT_ROW_PT
+                row += 1
+            ws.merge_cells(start_row=first, start_column=1, end_row=row - 1, end_column=1)
+            shop_cell(ws.cell(first, 1), month_cell(m["month"]))
+            if items:
+                pie = PieChart()
+                pie.title = f"Tháng {month_cell(m['month'])} · {m['month'][:4]}年{int(m['month'][5:])}月"
+                pie.add_data(Reference(ws, min_col=4, min_row=first, max_row=first + len(items) - 1))
+                pie.set_categories(Reference(ws, min_col=2, min_row=first, max_row=first + len(items) - 1))
+                pie.dataLabels = only_percent()
+                color_points(pie, len(items))
+                pie.legend.txPr = small_text(800)  # chu 8pt de chu thich hien du 10 ten san pham dai
+                pie.height, pie.width = PRODUCT_ROW_PT * n * 2.54 / 72 * 0.97, 27  # cm, vua khit 10 dong cua thang
+                ws.add_chart(pie, f"F{first}")
+
+    # ======== Phu luc: danh sach day du san pham
+    ws = wb.create_sheet("PL1. SP theo gian hàng")
+    sheet(ws, "Phụ lục: doanh thu theo sản phẩm — chi tiết từng gian hàng · 附录：各店铺产品销售额",
           ["Gian hàng\n店铺", "Kênh bán hàng\n销售平台", "SKU", "Tên sản phẩm\n产品名称", "Số lượng\n数量", vnd_h],
           [[r["shop"], r["channel"], r["sku"], r["name"], r["qty"], round(r["revenue"])] for r in report["products"]],
           [None, None, None, None, count, money], [30, 14, 14, 60, 10, 20])
-    ws.auto_filter.ref = f"A5:F{ws.max_row}"
+    ws.auto_filter.ref = f"A5:F{max(ws.max_row, 5)}"
 
-    # 2b. San pham tong tat ca gian
-    ws = wb.create_sheet("2b. SP tất cả gian 全部产品")
-    sheet(ws, "Doanh thu theo sản phẩm — tổng tất cả các gian hàng · 全部店铺产品销售额",
+    ws = wb.create_sheet("PL2. SP tất cả gian")
+    sheet(ws, "Phụ lục: doanh thu theo sản phẩm — tổng tất cả các gian hàng · 附录：全部店铺产品销售额",
           ["SKU", "Tên sản phẩm\n产品名称", "Số lượng\n数量", vnd_h, "Số gian hàng có bán\n销售店铺数"],
           [[r["sku"], r["name"], r["qty"], round(r["revenue"]), r["shops"]] for r in report["all_products"]],
           [None, None, count, money, count], [14, 64, 10, 20, 14])
     ws.auto_filter.ref = f"A5:E{ws.max_row}"
-
-    # 3. Bieu do tung gian hang: doanh thu theo thang (cot) + ty trong san pham (tron)
-    ws = wb.create_sheet("3. Biểu đồ từng gian 店铺图表")
-    ws.append(["Biểu đồ từng gian hàng · 各店铺图表"]); ws["A1"].font = Font(bold=True, size=14)
-    ws.append([period]); ws.append([note]); ws["A3"].font = Font(italic=True, color="71717A")
-    for col, w in zip("ABCDEFG", (16, 10, 20, 2, 46, 20, 10)):
-        ws.column_dimensions[col].width = w
-    t = report["total"]
-    blocks = [("Tất cả gian hàng · 全部店铺", "", t, report["all_products"])] + [
-        (r["shop"], r["channel"], r, [p for p in report["products"] if p["shop"] == r["shop"] and p["channel"] == r["channel"]])
-        for r in report["shops"] if r["revenue"] > 0]
-    BLOCK = 22  # so dong moi khoi (du cho bang 10 SP + bieu do cao 10cm)
-    for n, (name, channel, s, prods) in enumerate(blocks):
-        b = 5 + n * BLOCK
-        vn = lambda x: f"{round(x):,}".replace(",", ".")
-        c = ws.cell(b, 1, f"{name}{' · ' + channel if channel else ''} — {vn(s['orders'])} đơn/单, {vn(s['revenue'])} đ")
-        c.font = Font(bold=True, size=12)
-        # bang thang
-        for j, h in enumerate(["Tháng\n月份", "Số đơn\n订单数", rev_h], 1):
-            head(ws.cell(b + 1, j, h))
-        ws.row_dimensions[b + 1].height = 32
-        for k, m in enumerate(s["months"], b + 2):
-            for j, (val, f) in enumerate([(f"T{int(m['month'][5:])}/{m['month'][:4]} · {int(m['month'][5:])}月", None), (m["orders"], count),
-                                          (round(m["revenue"]), money)], 1):
-                c = ws.cell(k, j, val)
-                c.border = box
-                if f:
-                    c.number_format = f
-        m_last = b + 1 + len(s["months"])
-        # bang ty trong san pham: 10 SP lon nhat + cac SP khac
-        prods = [p for p in prods if p["revenue"] > 0]
-        rows = [(p["name"], p["revenue"]) for p in prods[:PIE_TOP]]
-        if len(prods) > PIE_TOP:
-            rows.append((f"Các sản phẩm khác · 其他产品 ({len(prods) - PIE_TOP})", sum(p["revenue"] for p in prods[PIE_TOP:])))
-        tot = sum(v for _, v in rows) or 1
-        for j, h in enumerate(["Sản phẩm\n产品", rev_h, "Tỷ trọng\n占比"], 5):
-            head(ws.cell(b + 1, j, h))
-        for k, (pname, v) in enumerate(rows, b + 2):
-            for j, (val, f) in enumerate([(pname, None), (round(v), money), (v / tot, "0.0%")], 5):
-                c = ws.cell(k, j, val)
-                c.border = box
-                if f:
-                    c.number_format = f
-        p_last = b + 1 + len(rows)
-
-        bar = BarChart()
-        bar.title = "Doanh thu theo tháng · 月度销售额"
-        bar.legend = None
-        bar.y_axis.numFmt = "#,##0"
-        bar.y_axis.majorGridlines = None
-        bar.add_data(Reference(ws, min_col=3, min_row=b + 1, max_row=m_last), titles_from_data=True)
-        bar.set_categories(Reference(ws, min_col=1, min_row=b + 2, max_row=m_last))
-        bar.series[0].graphicalProperties.solidFill = "3F3F46"
-        bar.dataLabels = DataLabelList()
-        bar.dataLabels.showVal = True
-        bar.height, bar.width = 10, 12
-        ws.add_chart(bar, f"I{b}")
-        if rows:
-            pie = PieChart()
-            pie.title = "Tỷ trọng sản phẩm · 产品销售占比"
-            pie.add_data(Reference(ws, min_col=6, min_row=b + 1, max_row=p_last), titles_from_data=True)
-            pie.set_categories(Reference(ws, min_col=5, min_row=b + 2, max_row=p_last))
-            pie.dataLabels = DataLabelList()
-            pie.dataLabels.showPercent = True
-            for k, color in enumerate(PIE_COLORS[:len(rows)]):
-                pt = DataPoint(idx=k)
-                pt.graphicalProperties.solidFill = color
-                pt.graphicalProperties.line.solidFill = "FFFFFF"
-                pie.series[0].dPt.append(pt)
-            pie.height, pie.width = 10, 20
-            ws.add_chart(pie, f"P{b}")
 
     buf = io.BytesIO()
     wb.save(buf)
@@ -424,6 +450,46 @@ def fix_core_dates(data):
             body = core.replace(b"+00:00Z", b"Z") if item.filename == "docProps/core.xml" else src.read(item.filename)
             dst.writestr(item, body)
     return out.getvalue()
+
+
+def sheet_name(shop, channel, used):
+    """Ten sheet hop le cua Excel (<= 31 ky tu, khong []:*?/\\), khong trung."""
+    base = "".join("_" if ch in '[]:*?/\\' else ch for ch in shop).strip(" '") or "Gian"
+    for cand in (base, f"{base} ({channel.replace(' Shop', '')})"):
+        cand = cand[:31]
+        if cand.lower() not in {u.lower() for u in used}:
+            used.add(cand)
+            return cand
+    n = 2
+    while f"{base[:27]} ({n})".lower() in {u.lower() for u in used}:
+        n += 1
+    used.add(f"{base[:27]} ({n})")
+    return f"{base[:27]} ({n})"
+
+
+def only_percent():
+    """Nhan bieu do tron chi hien %. Phai tat ro cac muc khac, neu khong Excel hien ca 'Series1; ten; gia tri'."""
+    from openpyxl.chart.label import DataLabelList
+    return DataLabelList(showPercent=True, showVal=False, showCatName=False, showSerName=False, showLegendKey=False,
+                         showLeaderLines=False)
+
+
+def small_text(size):
+    """Co chu (1/100 pt) cho chu thich bieu do."""
+    from openpyxl.chart.text import RichText
+    from openpyxl.drawing.text import CharacterProperties, Paragraph, ParagraphProperties
+    return RichText(p=[Paragraph(pPr=ParagraphProperties(defRPr=CharacterProperties(sz=size)),
+                                 endParaRPr=CharacterProperties(sz=size))])
+
+
+def color_points(pie, n):
+    """To mau co dinh theo thu tu cho bieu do tron Excel (giong trang web)."""
+    from openpyxl.chart.marker import DataPoint
+    for k, color in enumerate(PIE_COLORS[:n]):
+        pt = DataPoint(idx=k)
+        pt.graphicalProperties.solidFill = color
+        pt.graphicalProperties.line.solidFill = "FFFFFF"
+        pie.series[0].dPt.append(pt)
 
 
 def xlsx_name(report):
