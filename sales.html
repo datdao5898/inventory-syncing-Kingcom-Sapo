@@ -122,6 +122,28 @@ td.num, th.num { text-align:right; white-space:nowrap; font-variant-numeric:tabu
 #prod .sku-in { font-family:ui-monospace, Consolas, Menlo, monospace; font-size:11.5px; color:var(--faint); margin-left:8px; white-space:nowrap; }
 .toast { position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:var(--ink); color:#fff; padding:10px 16px; border-radius:6px; display:none; z-index:30; max-width:90vw; font-size:13px; }
 
+/* tab + thanh cong cu */
+.toolbar .form { align-items:flex-end; }
+.spacer { flex:1; }
+.presets { display:inline-flex; border:1px solid var(--line); border-radius:6px; overflow:hidden; }
+.presets button { border:0; border-radius:0; border-right:1px solid var(--line); padding:7px 11px; color:var(--text2); }
+.presets button:last-child { border-right:0; }
+.tabs { position:sticky; top:0; z-index:20; display:flex; gap:2px; background:var(--bg); padding:6px 0 0; margin:0 0 12px; border-bottom:1px solid var(--line); overflow-x:auto; }
+.tabs button { border:0; border-bottom:2px solid transparent; border-radius:0; background:none; padding:9px 14px; color:var(--muted); font-weight:500; }
+.tabs button:hover { background:none; color:var(--text); }
+.tabs button.on { color:var(--text); border-bottom-color:var(--ink); font-weight:600; }
+.tabs .dot { width:7px; height:7px; border-radius:50%; background:var(--bad); display:inline-block; margin-left:6px; vertical-align:2px; }
+[data-pane] { display:none; }
+body[data-tab="overview"] [data-pane="overview"], body[data-tab="products"] [data-pane="products"], body[data-tab="ads"] [data-pane="ads"] { display:block; }
+.nodata { text-align:center; color:var(--muted); padding:28px; }
+body[data-tab="ads"] .nodata, body.has-data .nodata { display:none; }
+.summary { background:var(--hover); border:1px solid var(--line); border-radius:6px; padding:9px 12px; margin:0 0 12px; line-height:1.7; }
+.explain { margin:10px 0 0; font-size:12.5px; color:var(--text2); }
+.explain summary { cursor:pointer; color:var(--muted); }
+.explain div { margin-top:6px; background:var(--hover); border:1px solid var(--line); border-radius:6px; padding:10px 12px; line-height:1.7; }
+.drop.compact { padding:9px; }
+.more-flags { display:inline-block; font-size:11px; color:var(--muted); border:1px solid var(--line); border-radius:10px; padding:0 6px; cursor:help; }
+th[title] { cursor:help; text-decoration:underline dotted #c4c4c8; text-underline-offset:3px; }
 /* quang cao shopee */
 .kpis.k6 { grid-template-columns:repeat(6, minmax(0,1fr)); }
 .drop { display:block; border:1.5px dashed #d4d4d8; border-radius:var(--radius); padding:16px; text-align:center; color:var(--muted); font-size:13px; cursor:pointer; }
@@ -182,66 +204,85 @@ input.sm-in { width:96px; }
 </div>
 
 <div class="content">
-  <div class="card">
+  <div class="card toolbar">
     <div class="form">
       <label><span>Từ ngày</span><input type="date" id="from" value="2026-09-01"></label>
       <label><span>Đến ngày</span><input type="date" id="to" value="2026-11-30"></label>
-      <button type="button" id="lastweek" title="Thứ 2 – Chủ nhật tuần trước, rồi lấy dữ liệu">Tuần trước</button>
+      <div class="presets" id="presets" title="Chọn nhanh kỳ rồi lấy dữ liệu">
+        <button type="button" data-range="lastweek">Tuần trước</button><button type="button" data-range="thisweek">Tuần này</button><button type="button" data-range="lastmonth">Tháng trước</button><button type="button" data-range="thismonth">Tháng này</button>
+      </div>
       <button class="primary" id="run"><svg class="i"><use href="#i-search"/></svg>Lấy dữ liệu</button>
-      <a class="btn" id="xlsx" href="api/sales.xlsx" style="display:none"><svg class="i"><use href="#i-down"/></svg>Tải Excel</a>
+      <span class="spacer"></span>
+      <a class="btn" id="xlsx" href="api/sales.xlsx" style="display:none" title="Excel theo Shopee Ads Weekly Tracker (chỉ gian Shopee): Theo dõi tuần · Quảng cáo Shopee · Top sản phẩm · Thương hiệu"><svg class="i"><use href="#i-down"/></svg>Tải Excel</a>
     </div>
-    <div id="status" class="small muted" style="margin-top:10px">Lấy đơn Shopee, TikTok Shop từ Sapo theo ngày tạo đơn. Mất khoảng 1–2 phút.</div>
+    <div id="status" class="small muted" style="margin-top:10px">Chọn kỳ (hoặc bấm Tuần trước) rồi Lấy dữ liệu: lấy đơn Shopee, TikTok Shop từ Sapo theo ngày tạo đơn, mất khoảng 1–2 phút.</div>
   </div>
+
+  <nav class="tabs" id="tabs">
+    <button data-tab="overview" class="on">Tổng quan gian hàng</button>
+    <button data-tab="products">Sản phẩm &amp; thương hiệu</button>
+    <button data-tab="ads">Quảng cáo Shopee<span class="dot" id="ads-dot" style="display:none" title="Có sản phẩm chạy QC chưa gán SKU"></span></button>
+  </nav>
+
+  <div class="card nodata" id="nodata">Chưa có số liệu. Chọn kỳ ở trên rồi bấm <b>Lấy dữ liệu</b> (hoặc <b>Tuần trước</b>).</div>
 
   <div id="result" style="display:none">
-    <div class="kpis" id="kpis"></div>
+    <section data-pane="overview">
+      <div class="kpis" id="kpis"></div>
+      <div class="card">
+        <div class="card-h">
+          <div><h2>Doanh thu theo gian hàng</h2><p>Không tính đơn đã huỷ · doanh thu đã trừ tiền hoàn trả hàng · gán Saleman ngay trong bảng</p></div>
+          <div class="seg" id="chart-type"><button data-type="pie" class="on">Biểu đồ tròn</button><button data-type="bar">Biểu đồ cột</button></div>
+        </div>
+        <div id="chart"></div>
+        <div class="wrap"><table>
+          <thead><tr><th>Gian hàng</th><th>Kênh</th><th>Saleman</th><th class="num">Số đơn</th><th class="num">Tổng doanh thu</th><th class="num">Tỷ trọng</th><th class="num hide-sm">Đơn huỷ</th><th class="hide-sm">Bán chạy nhất (số lượng)</th><th class="hide-sm">Thương hiệu bán chạy</th></tr></thead>
+          <tbody id="shops"></tbody>
+          <datalist id="dl-salesmen"></datalist>
+        </table></div>
+      </div>
+    </section>
 
-    <div class="card">
+    <section data-pane="products">
+      <div class="card">
+        <div class="card-h"><div><h2>Chi tiết theo gian hàng</h2><p id="prod-sub"></p></div>
+          <select id="shop" title="Chọn gian hàng để xem biểu đồ và sản phẩm"></select></div>
+        <div class="small summary" id="d-brands"></div>
+        <div class="detail">
+          <div class="sub-card"><h3>Doanh thu theo tháng</h3><div id="d-months"></div></div>
+          <div class="sub-card"><h3>Tỷ trọng sản phẩm</h3><div id="d-pie"></div></div>
+        </div>
+        <h3 style="font-size:13px; font-weight:600; margin:18px 0 10px">Doanh thu theo sản phẩm</h3>
+        <div class="row">
+          <input type="search" id="q" placeholder="Tìm tên sản phẩm hoặc mã SKU...">
+          <label class="ctl"><input type="checkbox" id="top30"> <span id="top30-lbl">Chỉ SP bán ≥ 30 cái</span></label>
+          <select id="psort"><option value="revenue">Xếp theo doanh thu</option><option value="qty">Xếp theo số lượng</option></select>
+          <select id="pper" title="Số sản phẩm mỗi trang"><option value="20">20 / trang</option><option value="50">50 / trang</option><option value="100">100 / trang</option></select>
+          <span class="small muted" id="count"></span>
+        </div>
+        <div class="wrap"><table><thead id="prod-head"></thead><tbody id="prod"></tbody></table></div>
+        <div class="more" id="more"></div>
+      </div>
+    </section>
+  </div>
+
+  <section data-pane="ads">
+    <div class="card" id="ads-card">
       <div class="card-h">
-        <div><h2>1. Tổng doanh thu theo gian hàng</h2><p>Không tính đơn đã huỷ · doanh thu đã trừ tiền hoàn trả hàng</p></div>
-        <div class="seg" id="chart-type"><button data-type="pie" class="on">Biểu đồ tròn</button><button data-type="bar">Biểu đồ cột</button></div>
+        <div><h2>Quảng cáo Shopee</h2><p>Tải file .csv xuất từ Quảng cáo Shopee (Sản phẩm hoặc Shop, mỗi file 1 gian) · cần doanh thu Sapo <b>cùng kỳ</b> với file để tính TACOS</p></div>
+        <select id="ads-period" title="Chọn kỳ quảng cáo đã tải lên" style="display:none"></select>
       </div>
-      <div id="chart"></div>
-      <div class="wrap"><table>
-        <thead><tr><th>Gian hàng</th><th>Kênh</th><th>Saleman</th><th class="num">Số đơn</th><th class="num">Tổng doanh thu</th><th class="num">Tỷ trọng</th><th class="num hide-sm">Đơn huỷ</th><th class="hide-sm">Bán chạy nhất (số lượng)</th><th class="hide-sm">Thương hiệu bán chạy</th></tr></thead>
-        <tbody id="shops"></tbody>
-        <datalist id="dl-salesmen"></datalist>
-      </table></div>
+      <label class="drop" id="ads-drop"><input type="file" id="ads-file" accept=".csv,text/csv" multiple hidden>
+        <b>＋ Tải file Quảng cáo Shopee</b> · bấm để chọn hoặc kéo thả, chọn được nhiều file cùng lúc</label>
+      <div id="ads-msg" class="small" style="margin-top:8px"></div>
+      <details class="explain"><summary>Các chỉ số nghĩa là gì?</summary>
+        <div><b>ROAS</b> = doanh số từ QC ÷ chi phí QC (bỏ 1 đồng thu về bao nhiêu đồng; càng cao càng tốt, cảnh báo khi &lt; 8).<br>
+        <b>TACOS</b> = chi phí QC ÷ doanh thu Sapo của các SP chạy QC × 100 (tốt: 8–12%; cao quá = tốn QC, thấp = còn dư địa tăng ngân sách). QC Shop chia cho doanh thu cả gian.<br>
+        <b>CTR</b> = click ÷ lượt xem (cảnh báo khi &lt; 6% → xem lại ảnh, tiêu đề). <b>CR</b> = đơn từ QC ÷ click (cảnh báo khi &lt; 3% → xem lại giá, mô tả).<br>
+        <b>Gán SKU</b>: mã sản phẩm Shopee khác SKU Sapo, cần gán 1 lần để tính TACOS; tool nhớ cho các kỳ sau.</div></details>
+      <div id="ads-body"></div>
     </div>
-
-    <div class="card">
-      <div class="card-h"><div><h2>2. Chi tiết từng gian hàng</h2><p id="prod-sub"></p></div>
-        <select id="shop" title="Chọn gian hàng để xem biểu đồ và sản phẩm"></select></div>
-      <div class="detail">
-        <div class="sub-card"><h3>Doanh thu theo tháng</h3><div id="d-months"></div></div>
-        <div class="sub-card"><h3>Tỷ trọng sản phẩm</h3><div id="d-pie"></div></div>
-      </div>
-      <div class="small" id="d-brands" style="margin:10px 0 0"></div>
-      <h3 style="font-size:13px; font-weight:600; margin:18px 0 10px">Doanh thu theo sản phẩm</h3>
-      <div class="row">
-        <input type="search" id="q" placeholder="Tìm tên sản phẩm hoặc mã SKU...">
-        <label class="ctl"><input type="checkbox" id="top30"> <span id="top30-lbl">Chỉ SP bán ≥ 30 cái</span></label>
-        <select id="psort"><option value="revenue">Xếp theo doanh thu</option><option value="qty">Xếp theo số lượng</option></select>
-        <select id="pper" title="Số sản phẩm mỗi trang"><option value="20">20 / trang</option><option value="50">50 / trang</option><option value="100">100 / trang</option></select>
-        <span class="small muted" id="count"></span>
-      </div>
-      <div class="wrap"><table><thead id="prod-head"></thead><tbody id="prod"></tbody></table></div>
-      <div class="more" id="more"></div>
-    </div>
-
-    <p class="small muted">File Excel theo yêu cầu Shopee Ads Weekly Tracker (chỉ gian Shopee): trang <b>Theo dõi tuần</b> (mỗi gian 1 dòng: saleman, bán chạy, thương hiệu, chi phí QC, doanh số QC, ROAS, TACOS, CTR, CR, đánh giá); <b>Quảng cáo Shopee</b> (chi tiết sản phẩm, QC Shop, từ khóa – khi đã tải file QC cùng kỳ); <b>Top sản phẩm</b> (xếp theo số lượng, đánh dấu SP bán ≥ 30 cái); <b>Thương hiệu</b> bán chạy.</p>
-  </div>
-
-  <div class="card" id="ads-card">
-    <div class="card-h">
-      <div><h2>3. Quảng cáo Shopee</h2><p>Tải file báo cáo xuất từ Quảng cáo Shopee (Dịch vụ Hiển thị, dạng .csv, mỗi file 1 gian hàng) để tính ROAS, TACOS, CTR, CR và đánh giá tự động</p></div>
-      <select id="ads-period" title="Chọn kỳ quảng cáo đã tải lên" style="display:none"></select>
-    </div>
-    <label class="drop" id="ads-drop"><input type="file" id="ads-file" accept=".csv,text/csv" multiple hidden>
-      <b>Bấm để chọn</b> hoặc kéo thả file .csv vào đây · chọn được nhiều file (nhiều gian) cùng lúc</label>
-    <div id="ads-msg" class="small" style="margin-top:8px"></div>
-    <div id="ads-body"></div>
-  </div>
+  </section>
 </div>
 <div class="tip" id="tip"></div>
 <div class="toast" id="toast"></div>
@@ -332,10 +373,29 @@ function weekRange(back) {  // back = 1: tuan truoc (thu 2 - chu nhat)
   const iso = x => x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0');
   return [iso(mon), iso(sun)];
 }
-$('#lastweek').onclick = () => { const [f, t] = weekRange(1); $('#from').value = f; $('#to').value = t; run(); };
+const isoDay = x => x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0');
+function presetRange(k) {
+  const d = new Date(), today = isoDay(d);
+  if (k === 'lastweek') return weekRange(1);
+  if (k === 'thisweek') { const [f] = weekRange(0); return [f, today]; }
+  if (k === 'thismonth') return [isoDay(new Date(d.getFullYear(), d.getMonth(), 1)), today];
+  return [isoDay(new Date(d.getFullYear(), d.getMonth() - 1, 1)), isoDay(new Date(d.getFullYear(), d.getMonth(), 0))];  // thang truoc
+}
+$('#presets').onclick = e => {
+  const b = e.target.closest('button[data-range]'); if (!b) return;
+  const [f, t] = presetRange(b.dataset.range); $('#from').value = f; $('#to').value = t; run();
+};
+function setTab(t) {
+  document.body.dataset.tab = t;
+  document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === t));
+  try { localStorage.setItem('sales-tab', t); } catch (e) {}
+}
+$('#tabs').onclick = e => { const b = e.target.closest('button[data-tab]'); if (b) setTab(b.dataset.tab); };
+try { setTab(localStorage.getItem('sales-tab') || 'overview'); } catch (e) { setTab('overview'); }
 function render() {
   const t = data.total;
   $('#result').style.display = '';
+  document.body.classList.add('has-data');
   $('#kpis').innerHTML = kpi('Tổng doanh thu', tr(t.revenue), vnd(t.revenue)) +
     kpi('Số đơn hàng', fmt(t.orders), 'Không tính đơn huỷ') +
     kpi('Gian hàng có đơn', fmt(t.shops), 'Shopee + TikTok Shop') +
@@ -432,8 +492,9 @@ const selectedShop = () => shopSel ? data.shops.find(r => r.channel + '|' + r.sh
 function renderDetail() {
   const shop = selectedShop(), months = (shop || data.total).months || [];
   const cur = shop || data.total, nTop = (cur.top_qty || []).length;
-  $('#d-brands').innerHTML = '<b>Bán chạy nhất:</b> ' + bestTxt(cur.bestseller) + ' &nbsp;·&nbsp; <b>Thương hiệu bán chạy:</b> ' +
-    brandTxt((cur.brands || []).slice(0, shop ? 3 : 5)) + ' &nbsp;·&nbsp; <b>' + nTop + '</b> SP bán ≥ ' + (data.top_qty_min || 30) + ' cái';
+  $('#d-brands').innerHTML = '🏆 <b>Bán chạy nhất:</b> ' + bestTxt(cur.bestseller) + '<br>🏷️ <b>Thương hiệu bán chạy:</b> ' +
+    brandTxt((cur.brands || []).slice(0, shop ? 3 : 5)) + '<br>📦 <b>' + nTop + '</b> sản phẩm bán ≥ ' + (data.top_qty_min || 30) + ' cái trong kỳ' +
+    (nTop ? ' · <button class="link" id="show-top30">xem danh sách</button>' : '');
   const max = Math.max(1, ...months.map(m => m.revenue));
   $('#d-months').innerHTML = months.length ? '<div class="cols">' + months.map((m, i) => '<div class="c" data-i="' + i + '"><div class="v">' + tr(m.revenue) + '</div>' +
       '<div class="b" style="height:' + (85 * Math.max(m.revenue, 0) / max).toFixed(1) + '%"></div></div>').join('') + '</div>' +
@@ -487,6 +548,7 @@ function pager(cur, n) {
 $('#shop').onchange = e => { shopSel = e.target.value; page = 1; renderDetail(); renderProducts(); };
 $('#q').oninput = () => { page = 1; renderProducts(); };
 $('#top30').onchange = $('#psort').onchange = $('#pper').onchange = () => { page = 1; renderProducts(); };
+$('#d-brands').addEventListener('click', e => { if (e.target.id === 'show-top30') { $('#top30').checked = true; page = 1; renderProducts(); $('#q').scrollIntoView({behavior: 'smooth', block: 'center'}); } });
 $('#more').addEventListener('click', e => {
   const b = e.target.closest('button[data-page]'); if (!b || b.disabled) return;
   page = Number(b.dataset.page); renderProducts();
@@ -498,7 +560,20 @@ $('#more').addEventListener('click', e => {
 let adsData = null, adsPeriod = '', adsShop = '', adsEdit = '', adsDel = '', adsKw = '';
 const num1 = v => v == null ? '–' : v.toLocaleString('vi-VN', {maximumFractionDigits: 1});
 const pctv = (v, d = 1) => v == null ? '–' : v.toLocaleString('vi-VN', {maximumFractionDigits: d}) + '%';
-const flags = fs => (fs || []).map(f => '<span class="flag ' + f.level + '">' + esc(f.text) + '</span>').join('');
+const LV = {bad: 0, warn: 1, good: 2, info: 3};
+const flagsAll = fs => (fs || []).map(f => '<span class="flag ' + f.level + '">' + esc(f.text) + '</span>').join('');
+// Gon: chi hien danh gia quan trong nhat, cac danh gia con lai trong "+N" (re chuot de xem)
+const flags = fs => {
+  fs = [...(fs || [])].sort((a, b) => LV[a.level] - LV[b.level]);
+  if (!fs.length) return '';
+  return '<span class="flag ' + fs[0].level + '">' + esc(fs[0].text) + '</span>' +
+    (fs.length > 1 ? ' <span class="more-flags" title="' + esc(fs.slice(1).map(f => '• ' + f.text).join('\n')) + '">+' + (fs.length - 1) + '</span>' : '');
+};
+let adsOnlyUnmapped = false;
+const TH = {roas: 'Doanh số từ QC ÷ chi phí QC. Càng cao càng tốt; cảnh báo khi < 8',
+  tacos: 'Chi phí QC ÷ doanh thu Sapo của SP chạy QC × 100. Tốt: 8–12%',
+  ctr: 'Click ÷ lượt xem. Cảnh báo khi < 6%', cr: 'Đơn từ QC ÷ click. Cảnh báo khi < 3%',
+  sapo: 'Doanh thu Sapo (đã trừ huỷ, hoàn) của các SKU đã gán cho SP chạy QC'};
 async function loadAds(syncSales) {
   // vua lay doanh thu Sapo: neu co file QC dung ky do thi chuyen sang ky do
   if (syncSales && data && adsData && adsData.periods.some(p => p.from === data.from && p.to === data.to)) adsPeriod = data.from + '|' + data.to;
@@ -538,6 +613,8 @@ function renderAds() {
   sel.style.display = r.periods.length ? '' : 'none';
   sel.innerHTML = r.periods.map(p => '<option value="' + p.from + '|' + p.to + '">Kỳ ' + dmy(p.from) + ' – ' + dmy(p.to) + ' · ' + p.shops.length + ' gian</option>').join('');
   sel.value = adsPeriod;
+  $('#ads-dot').style.display = r.analysis && r.analysis.has_sales && r.analysis.total.unmapped ? '' : 'none';
+  $('#ads-drop').classList.toggle('compact', r.periods.length > 0);
   if (!a || !a.shops.length) { $('#ads-body').innerHTML = '<p class="small muted" style="margin:12px 0 0">Chưa có file nào được tải lên.</p>'; return; }
   const t = a.total, T = a.thresholds, running = $('#run').disabled;
   let h = '';
@@ -545,6 +622,10 @@ function renderAds() {
     h += '<div class="notice">Để tính <b>TACOS</b>, gợi ý SKU và ghép với bảng doanh thu, cần doanh thu Sapo <b>cùng kỳ ' + dmy(a.from) + ' – ' + dmy(a.to) + '</b>.' +
       (running ? '<span class="row"><span class="spinner"></span>Đang lấy dữ liệu Sapo...</span>'
                : '<button class="primary sm" id="ads-sales">Lấy doanh thu Sapo kỳ này</button>') + '</div>';
+  }
+  if (a.has_sales && t.unmapped) {
+    h += '<div class="notice">⚠ <b>' + t.unmapped + ' sản phẩm</b> chạy quảng cáo chưa gán SKU Sapo → chưa tính được TACOS của các sản phẩm này.' +
+      '<button class="sm" id="ads-unmapped">' + (adsOnlyUnmapped ? 'Hiện tất cả sản phẩm' : 'Chỉ hiện SP chưa gán') + '</button></div>';
   }
   h += '<div class="kpis k6" style="margin-top:14px">' +
     kpi('Chi phí quảng cáo', tr(t.cost), a.shops.some(s => s.shop_ads)
@@ -557,8 +638,8 @@ function renderAds() {
     kpi('CR', pctv(t.cr, 2), fmt(t.conversions) + ' đơn từ QC') + '</div>';
   // theo gian hang
   h += '<h3 style="font-size:13px; font-weight:600; margin:18px 0 0">Theo gian hàng</h3><div class="wrap" style="margin-top:10px"><table class="tight"><thead><tr>' +
-    '<th>Gian hàng</th><th>Saleman</th><th class="num">Chi phí QC</th><th class="num">Doanh số QC</th><th class="num">ROAS</th><th class="num">DT Sapo SP chạy QC</th>' +
-    '<th class="num">TACOS</th><th class="num" title="Chi phí QC / doanh thu Sapo cả gian">CP / DT cả gian</th><th class="num">CTR</th><th class="num">CR</th><th>Đánh giá</th><th></th></tr></thead><tbody>' +
+    '<th>Gian hàng</th><th>Saleman</th><th class="num">Chi phí QC</th><th class="num">Doanh số QC</th><th class="num" title="' + TH.roas + '">ROAS</th><th class="num" title="' + TH.sapo + '">DT Sapo SP chạy QC</th>' +
+    '<th class="num" title="' + TH.tacos + '">TACOS</th><th class="num" title="' + TH.ctr + '">CTR</th><th class="num" title="' + TH.cr + '">CR</th><th>Đánh giá</th><th></th></tr></thead><tbody>' +
     a.shops.map(s => {
       const id = s.shop + '|' + a.from + '|' + a.to;
       const both = s.shop_ads && s.product_ads;
@@ -566,23 +647,24 @@ function renderAds() {
         '<td class="num">' + vnd(m.cost) + '</td><td class="num">' + vnd(m.gmv) + '</td><td class="num">' + num1(m.roas) + '</td>' +
         '<td class="num">' + (m.sapo_revenue == null || !m.mapped_cost ? '–' : vnd(m.sapo_revenue)) + '</td>' +
         '<td class="num" title="' + (label === 'Quảng cáo Shop' ? 'Chi phí QC Shop / doanh thu Sapo cả gian' : '') + '">' + pctv(m.tacos) + (label === 'Quảng cáo Shop' && m.tacos != null ? '*' : '') + '</td>' +
-        '<td class="num muted">' + pctv(m.cost_share, 2) + '</td><td class="num">' + pctv(m.ctr, 2) + '</td><td class="num">' + pctv(m.cr, 2) + '</td>' +
+        '<td class="num">' + pctv(m.ctr, 2) + '</td><td class="num">' + pctv(m.cr, 2) + '</td>' +
         '<td class="flags">' + flags(m.flags) + '</td><td></td></tr>';
       return '<tr><td><button class="link" style="font-size:13.5px; color:var(--text); padding:0" data-shopview="' + esc(s.shop) + '" title="Xem sản phẩm chạy QC của gian này">' + esc(s.shop) + '</button>' +
         '<div class="small muted">' + esc(s.kinds.map(k => k === 'shop' ? 'QC Shop' : 'QC SP').join(' + ')) + ' · tải lên ' + esc(s.uploaded_at.slice(11)) + ' ' + dmy(s.uploaded_at.slice(0, 10)) + '</div>' +
         (a.has_sales && !s.found_in_sapo ? '<div class="miss">Không thấy gian này trong đơn Sapo</div>' : '') + '</td>' +
         '<td>' + (esc(s.saleman) || '<span class="muted small">–</span>') + '</td>' +
         '<td class="num">' + vnd(s.cost) + '</td><td class="num">' + vnd(s.gmv) + '</td><td class="num">' + num1(s.roas) + '</td>' +
-        '<td class="num">' + (s.sapo_revenue == null || !s.mapped_cost ? '–' : vnd(s.sapo_revenue)) + '</td><td class="num"><b>' + pctv(s.tacos) + '</b></td>' +
-        '<td class="num muted">' + pctv(s.cost_share, 2) + '</td><td class="num">' + pctv(s.ctr, 2) + '</td><td class="num">' + pctv(s.cr, 2) + '</td>' +
+        '<td class="num">' + (s.sapo_revenue == null || !s.mapped_cost ? '–' : vnd(s.sapo_revenue)) + '</td>' +
+        '<td class="num" title="Chi phí QC ÷ doanh thu cả gian: ' + pctv(s.cost_share, 2) + '"><b>' + pctv(s.tacos) + '</b></td>' +
+        '<td class="num">' + pctv(s.ctr, 2) + '</td><td class="num">' + pctv(s.cr, 2) + '</td>' +
         '<td class="flags">' + flags(s.flags) + '</td>' +
         '<td><button class="link" data-del="' + esc(id) + '">' + (adsDel === id ? 'Bấm lần nữa để xoá' : 'Xoá file') + '</button></td></tr>' +
         (both ? sub('Quảng cáo Sản phẩm', s.product_ads) : '') +
         (s.shop_ads ? sub('Quảng cáo Shop', s.shop_ads, s.shop_ads.campaigns.join(', ')) : '') +
-        (s.shop_ads && s.shop_ads.keywords ? '<tr class="subrow"><td colspan="12" style="padding-left:30px"><button class="link" data-kw="' + esc(s.shop) + '">' +
+        (s.shop_ads && s.shop_ads.keywords ? '<tr class="subrow"><td colspan="11" style="padding-left:30px"><button class="link" data-kw="' + esc(s.shop) + '">' +
           (adsKw === s.shop ? 'Ẩn' : 'Xem') + ' ' + s.shop_ads.keywords.length + ' từ khóa của Quảng cáo Shop</button></td></tr>' +
           (adsKw === s.shop ? s.shop_ads.keywords.map(k => '<tr class="subrow kw"><td>' + esc(k.keyword) + '<div class="small muted">' + esc(k.keyword_type) + '</div></td><td></td>' +
-            '<td class="num">' + vnd(k.cost) + '</td><td class="num">' + vnd(k.gmv) + '</td><td class="num">' + num1(k.roas) + '</td><td class="num">–</td><td class="num">–</td><td class="num">–</td>' +
+            '<td class="num">' + vnd(k.cost) + '</td><td class="num">' + vnd(k.gmv) + '</td><td class="num">' + num1(k.roas) + '</td><td class="num">–</td><td class="num">–</td>' +
             '<td class="num" title="' + fmt(k.clicks) + ' click / ' + fmt(k.impressions) + ' xem">' + pctv(k.ctr, 2) + '</td><td class="num" title="' + fmt(k.conversions) + ' đơn">' + pctv(k.cr, 2) + '</td>' +
             '<td class="flags">' + flags(k.flags.filter(f => f.level !== 'info')) + '</td><td></td></tr>').join('') : '') : '');
     }).join('') + '</tbody></table></div>' +
@@ -592,9 +674,10 @@ function renderAds() {
   h += '<div class="row" style="justify-content:space-between; margin:22px 0 0"><h3 style="font-size:13px; font-weight:600; margin:0">Theo sản phẩm chạy quảng cáo</h3>' +
     '<select id="ads-shop"><option value="">Tất cả gian hàng</option>' + a.shops.map(s => '<option' + (s.shop === adsShop ? ' selected' : '') + '>' + esc(s.shop) + '</option>').join('') + '</select></div>' +
     '<div class="wrap" style="margin-top:10px"><table class="tight"><thead><tr><th>Sản phẩm</th><th>SKU Sapo</th><th class="num">Lượt xem</th><th class="num">Click</th>' +
-    '<th class="num">CTR</th><th class="num">Đơn QC</th><th class="num">CR</th><th class="num">Chi phí</th><th class="num">Doanh số QC</th>' +
-    '<th class="num">ROAS</th><th class="num">DT Sapo</th><th class="num">TACOS</th></tr></thead><tbody>' +
-    shops.map(s => (a.shops.length > 1 && !adsShop ? '<tr class="sum"><td colspan="12">' + esc(s.shop) + '</td></tr>' : '') + s.products.map(p => {
+    '<th class="num" title="' + TH.ctr + '">CTR</th><th class="num">Đơn QC</th><th class="num" title="' + TH.cr + '">CR</th><th class="num">Chi phí</th><th class="num">Doanh số QC</th>' +
+    '<th class="num" title="' + TH.roas + '">ROAS</th><th class="num" title="' + TH.sapo + '">DT Sapo</th><th class="num" title="' + TH.tacos + '">TACOS</th></tr></thead><tbody>' +
+    shops.map(s => (a.shops.length > 1 && !adsShop ? '<tr class="sum"><td colspan="12">' + esc(s.shop) + '</td></tr>' : '') +
+      s.products.filter(p => !adsOnlyUnmapped || p.unmapped).map(p => {
       const key = s.shop + '|' + p.item_id;
       let map;
       if (!p.item_id) map = '<span class="muted small">–</span>';
@@ -632,6 +715,7 @@ $('#ads-body').addEventListener('click', async e => {
   const b = e.target.closest('button'); if (!b) return;
   if (b.id === 'ads-sales') { const [f, t] = adsPeriod.split('|'); $('#from').value = f; $('#to').value = t; await run(); setTimeout(renderAds, 300); }
   else if (b.dataset.shopview) { adsShop = b.dataset.shopview; renderAds(); const x = $('#ads-shop'); if (x) x.scrollIntoView({behavior: 'smooth', block: 'start'}); }
+  else if (b.id === 'ads-unmapped') { adsOnlyUnmapped = !adsOnlyUnmapped; renderAds(); const x = $('#ads-shop'); if (x && adsOnlyUnmapped) x.scrollIntoView({behavior: 'smooth', block: 'start'}); }
   else if (b.dataset.kw) { adsKw = adsKw === b.dataset.kw ? '' : b.dataset.kw; renderAds(); }
   else if (b.dataset.edit) { adsEdit = b.dataset.edit; renderAds(); }
   else if (b.dataset.cancel) { adsEdit = ''; renderAds(); }
