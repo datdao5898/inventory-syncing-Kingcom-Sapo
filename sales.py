@@ -575,6 +575,10 @@ def ads_sheet(ws, a, sheet, period):
                          pct(sa["ctr"]), sa["conversions"], pct(sa["cr"]), round(sa["cost"]), round(sa["gmv"]), sa["roas"],
                          None if sa.get("sapo_revenue") is None else round(sa["sapo_revenue"]), pct(sa.get("tacos")),
                          "; ".join(f["text"] for f in sa["flags"])])
+            for k in sa.get("keywords", []):
+                rows.append([s["shop"], f"   Từ khóa: {k['keyword']}" + (f" ({k['keyword_type']})" if k["keyword_type"] else ""), "",
+                             k["impressions"], k["clicks"], pct(k["ctr"]), k["conversions"], pct(k["cr"]), round(k["cost"]),
+                             round(k["gmv"]), k["roas"], None, None, "; ".join(f["text"] for f in k["flags"])])
         for p in s["products"]:
             rows.append([s["shop"], p["name"], ", ".join(p["skus"]), p["impressions"], p["clicks"], pct(p["ctr"]), p["conversions"],
                          pct(p["cr"]), round(p["cost"]), round(p["gmv"]), p["roas"],

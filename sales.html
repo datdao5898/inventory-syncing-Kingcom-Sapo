@@ -139,6 +139,7 @@ button.sm { padding:3px 9px; font-size:12px; }
 tr.sum td { background:var(--hover); font-weight:600; }
 tr.subrow td { font-size:12.5px; color:var(--text2); border-bottom-style:dashed; }
 tr.subrow td:first-child { padding-left:30px !important; }
+tr.kw td { background:#fcfcfd; } tr.kw td:first-child { padding-left:46px !important; }
 input.sm-in { width:96px; }
 .best { max-width:260px; font-size:12.5px; line-height:1.4; }
 .best small { color:var(--muted); }
@@ -468,7 +469,7 @@ $('#top30').onchange = $('#psort').onchange = () => { limit = 100; renderProduct
 document.addEventListener('click', e => { if (e.target.id === 'more-btn') { limit += 200; renderProducts(); } });
 
 /* ---------- quang cao shopee ---------- */
-let adsData = null, adsPeriod = '', adsShop = '', adsEdit = '', adsDel = '';
+let adsData = null, adsPeriod = '', adsShop = '', adsEdit = '', adsDel = '', adsKw = '';
 const num1 = v => v == null ? '–' : v.toLocaleString('vi-VN', {maximumFractionDigits: 1});
 const pctv = (v, d = 1) => v == null ? '–' : v.toLocaleString('vi-VN', {maximumFractionDigits: d}) + '%';
 const flags = fs => (fs || []).map(f => '<span class="flag ' + f.level + '">' + esc(f.text) + '</span>').join('');
@@ -551,7 +552,13 @@ function renderAds() {
         '<td class="flags">' + flags(s.flags) + '</td>' +
         '<td><button class="link" data-del="' + esc(id) + '">' + (adsDel === id ? 'Bấm lần nữa để xoá' : 'Xoá file') + '</button></td></tr>' +
         (both ? sub('Quảng cáo Sản phẩm', s.product_ads) : '') +
-        (s.shop_ads ? sub('Quảng cáo Shop', s.shop_ads, s.shop_ads.campaigns.join(', ')) : '');
+        (s.shop_ads ? sub('Quảng cáo Shop', s.shop_ads, s.shop_ads.campaigns.join(', ')) : '') +
+        (s.shop_ads && s.shop_ads.keywords ? '<tr class="subrow"><td colspan="12" style="padding-left:30px"><button class="link" data-kw="' + esc(s.shop) + '">' +
+          (adsKw === s.shop ? 'Ẩn' : 'Xem') + ' ' + s.shop_ads.keywords.length + ' từ khóa của Quảng cáo Shop</button></td></tr>' +
+          (adsKw === s.shop ? s.shop_ads.keywords.map(k => '<tr class="subrow kw"><td>' + esc(k.keyword) + '<div class="small muted">' + esc(k.keyword_type) + '</div></td><td></td>' +
+            '<td class="num">' + vnd(k.cost) + '</td><td class="num">' + vnd(k.gmv) + '</td><td class="num">' + num1(k.roas) + '</td><td class="num">–</td><td class="num">–</td><td class="num">–</td>' +
+            '<td class="num" title="' + fmt(k.clicks) + ' click / ' + fmt(k.impressions) + ' xem">' + pctv(k.ctr, 2) + '</td><td class="num" title="' + fmt(k.conversions) + ' đơn">' + pctv(k.cr, 2) + '</td>' +
+            '<td class="flags">' + flags(k.flags.filter(f => f.level !== 'info')) + '</td><td></td></tr>').join('') : '') : '');
     }).join('') + '</tbody></table></div>' +
     (a.shops.some(s => s.shop_ads) ? '<p class="small muted" style="margin:6px 0 0">* Quảng cáo Shop không gắn với sản phẩm nào nên TACOS chia cho doanh thu cả gian; TACOS của dòng tổng chỉ tính Quảng cáo Sản phẩm.</p>' : '');
   // theo san pham
@@ -599,6 +606,7 @@ $('#ads-body').addEventListener('click', async e => {
   const b = e.target.closest('button'); if (!b) return;
   if (b.id === 'ads-sales') { const [f, t] = adsPeriod.split('|'); $('#from').value = f; $('#to').value = t; await run(); setTimeout(renderAds, 300); }
   else if (b.dataset.shopview) { adsShop = b.dataset.shopview; renderAds(); const x = $('#ads-shop'); if (x) x.scrollIntoView({behavior: 'smooth', block: 'start'}); }
+  else if (b.dataset.kw) { adsKw = adsKw === b.dataset.kw ? '' : b.dataset.kw; renderAds(); }
   else if (b.dataset.edit) { adsEdit = b.dataset.edit; renderAds(); }
   else if (b.dataset.cancel) { adsEdit = ''; renderAds(); }
   else if (b.dataset.save) saveMap(b.dataset.save, $('#map-in').value.split(',').map(x => x.trim()).filter(Boolean));

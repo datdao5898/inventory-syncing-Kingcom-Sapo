@@ -8,6 +8,8 @@ Theo file yeu cau "BAO_CAO_SHOPEE_DEMO_AI":
 
 Moi file Shopee = 1 gian hang, 1 khoang thoi gian (tong ca ky, khong chia theo ngay), moi dong 1 chien dich.
 2 loai file: "product" = Dich vu Hien thi San pham (co cot Ma san pham), "shop" = Dich vu Hien thi Shop (khong co).
+File "theo tu khoa" (Keyword Level, co cot Loai tu khoa) la cung so tien cua chien dich, chia nho theo tu khoa
+-> cung loai, thay the file chien dich cung ky (tong khong doi) va co them bang chi tiet tu khoa.
 QC Shop khong gan voi san pham nao -> TACOS cua QC Shop = chi phi / doanh thu Sapo ca gian.
 San pham Shopee (Ma san pham) khac SKU Sapo -> bang gan reports/ads/map.json (gan 1 lan, nho mai).
 """
@@ -94,9 +96,11 @@ def parse_csv(text):
         c = {f: _num(r.get(col)) for col, f in COLUMNS.items()}
         c.update(name=(r.get("Tên Dịch vụ Hiển thị") or "").strip(), status=(r.get("Trạng thái") or "").strip(),
                  type=(r.get("Loại Dịch vụ Hiển thị") or "").strip(), bidding=(r.get("Phương thức đấu thầu") or "").strip(),
-                 item_id=re.sub(r"\D", "", r.get("Mã sản phẩm") or ""), keyword=(r.get("Từ khóa") or "").strip())
+                 item_id=re.sub(r"\D", "", r.get("Mã sản phẩm") or ""), keyword=(r.get("Từ khóa") or "").strip(),
+                 keyword_type=(r.get("Loại từ khóa") or "").strip())
         campaigns.append(c)
-    return {"shop": shop, "kind": kind, "title": lines[0].strip() if lines else "", "username": meta.get("Tên đăng nhập", ""), "seller_id": meta.get("Mã Người bán", ""),
+    by_keyword = any(c["keyword"] and c["keyword"] != "Tất cả" for c in campaigns)
+    return {"shop": shop, "kind": kind, "by_keyword": by_keyword, "title": lines[0].strip() if lines else "", "username": meta.get("Tên đăng nhập", ""), "seller_id": meta.get("Mã Người bán", ""),
             "from": _day(m.group(1)), "to": _day(m.group(2)), "created": meta.get("Thời gian tạo báo cáo", ""),
             "uploaded_at": datetime.now().strftime("%Y-%m-%d %H:%M"), "campaigns": campaigns}
 
@@ -347,12 +351,20 @@ def analyze(start, end, report=None):
         for u in files:
             if u["kind"] == "shop":
                 # QC Shop: cong tat ca chien dich thanh 1 dong; TACOS = chi phi / doanh thu ca gian
-                shop_ads = _blank() | {"campaigns": [c["name"] for c in u["campaigns"]]}
+                shop_ads = _blank() | {"campaigns": list(dict.fromkeys(c["name"] for c in u["campaigns"])),
+                                       "by_keyword": bool(u.get("by_keyword"))}
                 for c in u["campaigns"]:
                     _add(shop_ads, c)
                 shop_ads["mapped_cost"] = shop_ads["cost"]
                 _metrics(shop_ads, shop_rev if has_sales and shop_rev else None)
                 shop_ads["uploaded_at"] = u["uploaded_at"]
+                if shop_ads["by_keyword"]:
+                    kws = []
+                    for c in u["campaigns"]:
+                        k = _blank() | {"keyword": c["keyword"], "keyword_type": c.get("keyword_type", ""), "campaign": c["name"]}
+                        _add(k, c)
+                        kws.append(_metrics(k))
+                    shop_ads["keywords"] = sorted(kws, key=lambda k: -k["cost"])
                 for f in SUM_FIELDS:  # cong vao tong gian, KHONG cong vao TACOS (chi tinh QC San pham)
                     shop_m[f] += shop_ads[f]
                 continue
