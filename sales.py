@@ -26,7 +26,7 @@ PIE_TOP = 10  # bieu do tron: 10 muc lon nhat + "Cac ... khac"
 PIE_COLORS = ["2A78D6", "EB6834", "1BAF7A", "EDA100", "E87BA4", "008300", "6250D6", "E34948", "0094C6", "B8650A", "B4B4BB"]
 TOP_MONTH = 10  # sheet tung gian: top 10 san pham ban chay moi thang
 PRODUCT_ROW_PT = 34  # chieu cao dong san pham: du cho ten 2 dong + chu thich 10 muc cua bieu do
-AD_COLUMNS = ["Ngân sách quảng cáo\n广告预算", "Tổng doanh thu từ Shopee ads\nShopee 广告销售额", "Tổng đơn hàng\n总订单数"]
+AD_COLUMNS = ["Ngân sách quảng cáo", "Tổng doanh thu từ quảng cáo Shopee", "Tổng đơn hàng"]
 CACHE_SECONDS = 600
 _cache = {}
 
@@ -226,11 +226,10 @@ def to_xlsx(report):
     box = Border(left=thin, right=thin, top=thin, bottom=thin)
     money, count = "#,##0", "#,##0"
     d1, d2 = (datetime.strptime(report[k], "%Y-%m-%d") for k in ("from", "to"))
-    period = f"Từ {d1:%d/%m/%Y} đến {d2:%d/%m/%Y} · 期间：{d1:%Y年%m月%d日} – {d2:%Y年%m月%d日}"
-    note = ("Không tính đơn đã huỷ; doanh thu đã trừ tiền hoàn (trả hàng). Nguồn: đơn hàng Sapo. · "
-            "不含已取消订单；销售额已扣除退货退款。数据来源：Sapo 订单。")
-    vnd_h = "Tổng doanh thu (đ)\n销售额（越南盾）"
-    rev_h = "Doanh thu (đ)\n销售额（越南盾）"
+    period = f"Từ {d1:%d/%m/%Y} đến {d2:%d/%m/%Y}"
+    note = "Không tính đơn đã huỷ; doanh thu đã trừ tiền hoàn (trả hàng). Nguồn: đơn hàng Sapo."
+    vnd_h = "Tổng doanh thu (đ)"
+    rev_h = "Doanh thu (đ)"
 
     def head(c):
         c.font, c.fill, c.border = head_font, head_fill, box
@@ -271,13 +270,13 @@ def to_xlsx(report):
     ws = wb.active
     ws.title = "Tổng Quan"
     rows = [[r["shop"], r["channel"], r["orders"], round(r["revenue"]), None, None, None] for r in report["shops"]]
-    hr = sheet(ws, "Tổng doanh thu theo gian hàng Sàn · 各电商平台店铺销售额",
-               ["Gian hàng\n店铺", "Kênh bán hàng\n销售平台", "Số lượng đơn hàng\n订单数量", vnd_h] + AD_COLUMNS,
+    hr = sheet(ws, "Tổng doanh thu theo gian hàng Sàn",
+               ["Gian hàng", "Kênh bán hàng", "Số lượng đơn hàng", vnd_h] + AD_COLUMNS,
                rows, [None, None, count, money, money, money, count], [27, 22, 18, 20, 20, 22, 16], yu_cols=3, top=2)
     last = hr + len(rows)
     t = report["total"]
     total_row = last + 1
-    for i, v in enumerate(["TỔNG CỘNG · 合计", "", t["orders"], round(t["revenue"])] +
+    for i, v in enumerate(["TỔNG CỘNG", "", t["orders"], round(t["revenue"])] +
                           [f"=SUM({get_column_letter(i)}{hr + 1}:{get_column_letter(i)}{last})" for i in (5, 6, 7)], 1):
         ws.cell(total_row, i, v)
     for i, f in enumerate([None, None, count, money, money, money, count], 1):
@@ -285,19 +284,19 @@ def to_xlsx(report):
         c.font, c.border = bold, box
         if f:
             c.number_format = f
-    ws.cell(total_row + 1, 1, "Các cột màu vàng để trống cho Yu điền số liệu quảng cáo. · 黄色列留空，由 Yu 填写广告数据。").font = Font(italic=True, color="A16207")
+    ws.cell(total_row + 1, 1, "Các cột màu vàng để trống cho Yu điền số liệu quảng cáo.").font = Font(italic=True, color="A16207")
     chart_row = total_row + 3
-    ws.cell(chart_row, 2, "BIỂU ĐỒ · 图表").font = bold
+    ws.cell(chart_row, 2, "BIỂU ĐỒ").font = bold
     shops = [r for r in report["shops"] if r["revenue"] > 0]
     if shops:
         # Bang ty trong cho bieu do tron: 10 gian lon nhat + "Cac gian khac" (cot I-K, nhu file mau)
         top, rest = shops[:PIE_TOP], shops[PIE_TOP:]
         pie_rows = [(r["shop"] if r["channel"] == "Shopee" else f'{r["shop"]} ({r["channel"]})', r["revenue"]) for r in top]
         if rest:
-            pie_rows.append((f"Các gian khác · 其他店铺 ({len(rest)})", sum(r["revenue"] for r in rest)))
+            pie_rows.append((f"Các gian khác ({len(rest)})", sum(r["revenue"] for r in rest)))
         total = sum(v for _, v in pie_rows)
-        ws.cell(hr, 9, "Tỷ trọng doanh thu · 销售额占比").font = bold
-        for j, h in enumerate(["Gian hàng\n店铺", rev_h, "Tỷ trọng\n占比"], 9):
+        ws.cell(hr, 9, "Tỷ trọng doanh thu").font = bold
+        for j, h in enumerate(["Gian hàng", rev_h, "Tỷ trọng"], 9):
             head(ws.cell(hr + 1, j, h))
         for k, (name, v) in enumerate(pie_rows, hr + 2):
             for j, (val, f) in enumerate([(name, None), (round(v), money), (v / total, "0.0%")], 9):
@@ -309,7 +308,7 @@ def to_xlsx(report):
         for j, w in zip("IJK", (32, 18, 10)):
             ws.column_dimensions[j].width = w
         pie = PieChart()
-        pie.title = "Tỷ trọng doanh thu theo gian hàng · 各店铺销售额占比"
+        pie.title = "Tỷ trọng doanh thu theo gian hàng"
         pie.add_data(Reference(ws, min_col=10, min_row=hr + 1, max_row=pie_last), titles_from_data=True)
         pie.set_categories(Reference(ws, min_col=9, min_row=hr + 2, max_row=pie_last))
         pie.dataLabels = only_percent()
@@ -319,8 +318,8 @@ def to_xlsx(report):
 
         chart = BarChart()
         chart.type = "bar"
-        chart.title = "Doanh thu theo gian hàng · 各店铺销售额"
-        chart.y_axis.title = "Doanh thu (đ) · 销售额（越南盾）"
+        chart.title = "Doanh thu theo gian hàng"
+        chart.y_axis.title = "Doanh thu (đ)"
         chart.y_axis.numFmt = "#,##0"
         chart.y_axis.majorGridlines = None
         chart.x_axis.scaling.orientation = "maxMin"  # gian hang lon nhat o tren
@@ -361,15 +360,14 @@ def to_xlsx(report):
         # tieu de
         ws.merge_cells("A2:F2")
         c = ws["A2"]
-        c.value = (f"REPORT DOANH THU VÀ CHI PHÍ {channel_ads.upper()} ADS {r['shop'].upper()}\n"
-                   f"{r['shop']} 销售额与 {channel_ads} 广告费用报告")
+        c.value = f"BÁO CÁO DOANH THU VÀ CHI PHÍ QUẢNG CÁO {channel_ads.upper()} — {r['shop'].upper()}"
         c.font, c.alignment = Font(bold=True, size=12), Alignment(horizontal="left", vertical="center", wrap_text=True)
-        ws.row_dimensions[2].height = 36
+        ws.row_dimensions[2].height = 24
         ws["A3"] = f"{r['shop']} · {r['channel']} · {period}"
         ws["A3"].font = Font(italic=True, color="71717A")
         # bang theo thang
-        heads = ["Tháng\n月份", "Doanh Thu\n销售额", "Tổng Đơn Hàng\n订单总数", f"Chi phí {channel_ads} ads\n{channel_ads} 广告费用",
-                 f"Doanh Thu Từ {channel_ads} Ads\n{channel_ads} 广告销售额", "Tổng Đơn Hàng Từ Ads\n广告订单数"]
+        heads = ["Tháng", "Doanh Thu", "Tổng Đơn Hàng", f"Chi Phí Quảng Cáo {channel_ads}",
+                 f"Doanh Thu Từ Quảng Cáo {channel_ads}", "Tổng Đơn Hàng Từ Quảng Cáo"]
         for j, h in enumerate(heads, 1):
             shop_head(ws.cell(4, j), h)
         ws.row_dimensions[4].height = 34
@@ -384,14 +382,14 @@ def to_xlsx(report):
         # top 10 san pham ban chay tung thang
         row += 1
         ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=3)
-        c = ws.cell(row, 1, f"TOP {TOP_MONTH} SẢN PHẨM BÁN CHẠY TRONG THÁNG · 每月畅销产品前 {TOP_MONTH} 名")
+        c = ws.cell(row, 1, f"{TOP_MONTH} SẢN PHẨM BÁN CHẠY NHẤT TRONG THÁNG")
         c.font, c.alignment = Font(bold=True, size=12), Alignment(horizontal="left", vertical="center")
         ws.row_dimensions[row].height = 30
         row += 2
-        for j, h in enumerate(["Tháng\n月份", "Tên sản phẩm\n产品名称", "Số lượng\n数量", "Doanh thu\n销售额"], 1):
+        for j, h in enumerate(["Tháng", "Tên sản phẩm", "Số lượng", "Doanh thu"], 1):
             shop_head(ws.cell(row, j), h)
         ws.row_dimensions[row].height = 34
-        ws.cell(row, 6, "BIỂU ĐỒ % CỦA TOP SP · 热销产品占比").font = bold
+        ws.cell(row, 6, "BIỂU ĐỒ % CỦA 10 SẢN PHẨM BÁN CHẠY").font = bold
         row += 1
         for m in r["months"]:
             items = tops.get((r["channel"], r["shop"], m["month"]), [])
@@ -399,7 +397,7 @@ def to_xlsx(report):
             n = TOP_MONTH  # moi thang dung du 10 dong de bieu do khong chong len nhau
             for k in range(n):
                 it = items[k] if k < len(items) else None
-                shop_cell(ws.cell(row, 2), it["name"] if it else ("Không có đơn · 无订单" if k == 0 and not items else None))
+                shop_cell(ws.cell(row, 2), it["name"] if it else ("Không có đơn" if k == 0 and not items else None))
                 shop_cell(ws.cell(row, 3), it["qty"] if it else None, "#,##0")
                 shop_cell(ws.cell(row, 4), round(it["revenue"]) if it else None, "#,##0")
                 ws.row_dimensions[row].height = PRODUCT_ROW_PT
@@ -408,7 +406,7 @@ def to_xlsx(report):
             shop_cell(ws.cell(first, 1), month_cell(m["month"]))
             if items:
                 pie = PieChart()
-                pie.title = f"Tháng {month_cell(m['month'])} · {m['month'][:4]}年{int(m['month'][5:])}月"
+                pie.title = f"Tháng {int(m['month'][5:])}/{m['month'][:4]}"
                 pie.add_data(Reference(ws, min_col=4, min_row=first, max_row=first + len(items) - 1))
                 pie.set_categories(Reference(ws, min_col=2, min_row=first, max_row=first + len(items) - 1))
                 pie.dataLabels = only_percent()
@@ -419,15 +417,15 @@ def to_xlsx(report):
 
     # ======== Phu luc: danh sach day du san pham
     ws = wb.create_sheet("PL1. SP theo gian hàng")
-    sheet(ws, "Phụ lục: doanh thu theo sản phẩm — chi tiết từng gian hàng · 附录：各店铺产品销售额",
-          ["Gian hàng\n店铺", "Kênh bán hàng\n销售平台", "SKU", "Tên sản phẩm\n产品名称", "Số lượng\n数量", vnd_h],
+    sheet(ws, "Phụ lục: doanh thu theo sản phẩm — chi tiết từng gian hàng",
+          ["Gian hàng", "Kênh bán hàng", "Mã SKU", "Tên sản phẩm", "Số lượng", vnd_h],
           [[r["shop"], r["channel"], r["sku"], r["name"], r["qty"], round(r["revenue"])] for r in report["products"]],
           [None, None, None, None, count, money], [30, 14, 14, 60, 10, 20])
     ws.auto_filter.ref = f"A5:F{max(ws.max_row, 5)}"
 
     ws = wb.create_sheet("PL2. SP tất cả gian")
-    sheet(ws, "Phụ lục: doanh thu theo sản phẩm — tổng tất cả các gian hàng · 附录：全部店铺产品销售额",
-          ["SKU", "Tên sản phẩm\n产品名称", "Số lượng\n数量", vnd_h, "Số gian hàng có bán\n销售店铺数"],
+    sheet(ws, "Phụ lục: doanh thu theo sản phẩm — tổng tất cả các gian hàng",
+          ["Mã SKU", "Tên sản phẩm", "Số lượng", vnd_h, "Số gian hàng có bán"],
           [[r["sku"], r["name"], r["qty"], round(r["revenue"]), r["shops"]] for r in report["all_products"]],
           [None, None, count, money, count], [14, 64, 10, 20, 14])
     ws.auto_filter.ref = f"A5:E{ws.max_row}"
