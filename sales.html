@@ -113,8 +113,13 @@ th { font-size:12px; font-weight:500; color:var(--muted); white-space:nowrap; ba
 td.num, th.num { text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; }
 .sku { font-family:ui-monospace, Consolas, Menlo, monospace; font-size:12px; color:var(--muted); }
 .empty { text-align:center; color:var(--muted); padding:28px 10px !important; }
-.more { text-align:center; padding:12px; border-top:1px solid var(--line); margin:0 -18px -18px; }
+.more { display:flex; justify-content:center; align-items:center; gap:4px; flex-wrap:wrap; padding:10px; border-top:1px solid var(--line); margin:0 -18px -18px; }
 .more:empty { display:none; }
+.more button { padding:4px 10px; font-size:12.5px; min-width:34px; justify-content:center; }
+.more button.on { background:var(--ink); border-color:var(--ink); color:#fff; }
+.more .gap { color:var(--muted); padding:0 2px; }
+#prod td { padding-top:6px; padding-bottom:6px; }
+#prod .sku-in { font-family:ui-monospace, Consolas, Menlo, monospace; font-size:11.5px; color:var(--faint); margin-left:8px; white-space:nowrap; }
 .toast { position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:var(--ink); color:#fff; padding:10px 16px; border-radius:6px; display:none; z-index:30; max-width:90vw; font-size:13px; }
 
 /* quang cao shopee */
@@ -217,6 +222,7 @@ input.sm-in { width:96px; }
         <input type="search" id="q" placeholder="Tìm tên sản phẩm hoặc mã SKU...">
         <label class="ctl"><input type="checkbox" id="top30"> <span id="top30-lbl">Chỉ SP bán ≥ 30 cái</span></label>
         <select id="psort"><option value="revenue">Xếp theo doanh thu</option><option value="qty">Xếp theo số lượng</option></select>
+        <select id="pper" title="Số sản phẩm mỗi trang"><option value="20">20 / trang</option><option value="50">50 / trang</option><option value="100">100 / trang</option></select>
         <span class="small muted" id="count"></span>
       </div>
       <div class="wrap"><table><thead id="prod-head"></thead><tbody id="prod"></tbody></table></div>
@@ -252,7 +258,7 @@ const dmy = d => d.split('-').reverse().join('/');
 const DON = 'đơn';
 const PIE_TOP = 10;  // 10 muc lon nhat + "Cac ... khac"
 const PIE_COLORS = Array.from({length: 10}, (_, i) => 'var(--c' + (i + 1) + ')');
-let data = null, chartType = 'pie', shopSel = '', limit = 100, timer = null;
+let data = null, chartType = 'pie', shopSel = '', page = 1, timer = null;
 try { chartType = localStorage.getItem('sales-chart') || 'pie'; } catch (e) {}
 
 function toast(msg) { const t = $('#toast'); t.textContent = msg; t.style.display = 'block'; clearTimeout(t._h); t._h = setTimeout(() => t.style.display = 'none', 4000); }
@@ -275,7 +281,7 @@ async function load() {
   if (r.error) { $('#status').innerHTML = '<span style="color:var(--bad)">' + esc(r.error) + '</span>'; return; }
   if (!r.report) return;
   const rep = r.report;
-  if (!data || data.generated_at !== rep.generated_at || data.from !== rep.from || data.to !== rep.to) { data = rep; shopSel = ''; limit = 100; }
+  if (!data || data.generated_at !== rep.generated_at || data.from !== rep.from || data.to !== rep.to) { data = rep; shopSel = ''; page = 1; }
   $('#from').value = data.from; $('#to').value = data.to;
   $('#status').textContent = 'Kỳ: ' + dmy(data.from) + ' – ' + dmy(data.to) + ' · dữ liệu lấy lúc ' + data.generated_at.slice(11) + ' ' +
     dmy(data.generated_at.slice(0, 10)) + '. Bấm "Lấy dữ liệu" lần nữa để lấy số mới nhất.';
@@ -458,15 +464,35 @@ function renderProducts() {
   $('#count').textContent = fmt(rows.length) + ' sản phẩm · ' + vnd(sum);
   $('#prod-head').innerHTML = '<tr><th>Sản phẩm' + '</th><th class="num">Số lượng' + '</th><th class="num">Tổng doanh thu' + '</th>' +
     (shopSel ? '' : '<th class="num hide-sm">Số gian bán' + '</th>') + '</tr>';
-  $('#prod').innerHTML = rows.slice(0, limit).map(r => '<tr><td>' + esc(r.name) + '<div class="sku">' + esc(r.sku) + '</div></td><td class="num">' + fmt(r.qty) +
+  const per = Number($('#pper').value) || 20, pages = Math.max(1, Math.ceil(rows.length / per));
+  page = Math.min(Math.max(page, 1), pages);
+  const start = (page - 1) * per;
+  $('#prod').innerHTML = rows.slice(start, start + per).map((r, i) => '<tr><td><span class="muted small" style="display:inline-block; min-width:26px">' + (start + i + 1) + '</span>' +
+    esc(r.name) + '<span class="sku-in">' + esc(r.sku) + '</span></td><td class="num">' + fmt(r.qty) +
     '</td><td class="num">' + vnd(r.revenue) + '</td>' + (shopSel ? '' : '<td class="num hide-sm muted">' + r.shops + '</td>') + '</tr>').join('') ||
     '<tr><td colspan="4" class="empty">Không có sản phẩm</td></tr>';
-  $('#more').innerHTML = rows.length > limit ? '<button id="more-btn">Xem thêm (' + fmt(rows.length - limit) + ')</button>' : '';
+  $('#more').innerHTML = pages > 1 ? pager(page, pages) + '<span class="small muted" style="margin-left:10px">' + fmt(start + 1) + '–' +
+    fmt(Math.min(start + per, rows.length)) + ' / ' + fmt(rows.length) + '</span>' : '';
 }
-$('#shop').onchange = e => { shopSel = e.target.value; limit = 100; renderDetail(); renderProducts(); };
-$('#q').oninput = () => { limit = 100; renderProducts(); };
-$('#top30').onchange = $('#psort').onchange = () => { limit = 100; renderProducts(); };
-document.addEventListener('click', e => { if (e.target.id === 'more-btn') { limit += 200; renderProducts(); } });
+function pager(cur, n) {
+  const nums = [...new Set([1, cur - 2, cur - 1, cur, cur + 1, cur + 2, n])].filter(x => x >= 1 && x <= n).sort((a, b) => a - b);
+  let h = '<button data-page="' + (cur - 1) + '"' + (cur === 1 ? ' disabled' : '') + '>‹ Trước</button>', prev = 0;
+  for (const x of nums) {
+    if (x - prev > 1) h += '<span class="gap">…</span>';
+    h += '<button data-page="' + x + '"' + (x === cur ? ' class="on"' : '') + '>' + x + '</button>';
+    prev = x;
+  }
+  return h + '<button data-page="' + (cur + 1) + '"' + (cur === n ? ' disabled' : '') + '>Sau ›</button>';
+}
+$('#shop').onchange = e => { shopSel = e.target.value; page = 1; renderDetail(); renderProducts(); };
+$('#q').oninput = () => { page = 1; renderProducts(); };
+$('#top30').onchange = $('#psort').onchange = $('#pper').onchange = () => { page = 1; renderProducts(); };
+$('#more').addEventListener('click', e => {
+  const b = e.target.closest('button[data-page]'); if (!b || b.disabled) return;
+  page = Number(b.dataset.page); renderProducts();
+  const top = $('#prod-head').getBoundingClientRect().top;
+  if (top < 0) $('#q').scrollIntoView({block: 'start'});  // dang o cuoi bang -> quay ve dau bang
+});
 
 /* ---------- quang cao shopee ---------- */
 let adsData = null, adsPeriod = '', adsShop = '', adsEdit = '', adsDel = '', adsKw = '';
