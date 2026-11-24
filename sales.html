@@ -158,6 +158,26 @@ body[data-tab="ads"] .nodata, body[data-tab="guide"] .nodata, body.has-data .nod
 .drop.compact { padding:9px; }
 .more-flags { display:inline-block; font-size:11px; color:var(--muted); border:1px solid var(--line); border-radius:10px; padding:0 6px; cursor:help; }
 th[title] { cursor:help; text-decoration:underline dotted #c4c4c8; text-underline-offset:3px; }
+/* khung tung bang trong tab Quang cao */
+.sec { border:1px solid var(--line); border-radius:var(--radius); margin-top:18px; overflow:hidden; background:var(--card); }
+.sec-h { display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; padding:12px 16px; background:var(--hover); border-bottom:1px solid var(--line); }
+.sec-h h3 { font-size:14px; font-weight:600; margin:0; }
+.sec-h p { margin:2px 0 0; font-size:12.5px; color:var(--muted); }
+.sec .wrap { margin:0; border-top:0; }
+.sec .foot { padding:8px 16px; font-size:12px; color:var(--muted); border-top:1px solid var(--line); background:var(--hover); }
+tr.grp th { font-size:10.5px; font-weight:600; text-transform:uppercase; letter-spacing:.04em; color:var(--faint); background:var(--card); text-align:center; padding-top:9px; padding-bottom:3px; border-bottom:0; }
+.gs { border-left:1px solid var(--line); }
+tr.shop-row td { background:#fcfcfd; }
+tr.shop-row button.shop-link { font-size:13.5px; font-weight:600; color:var(--text); padding:0; text-decoration:none; text-align:left; }
+tr.shop-row button.shop-link:hover { text-decoration:underline; background:none; }
+tr.shop-row td:first-child { min-width:190px; }
+.sec td.flags { min-width:270px; }
+td.pname .nm2 { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+.chip, button.chip { display:inline-block; font:400 11.5px/1.6 ui-monospace, Consolas, Menlo, monospace; border:1px solid var(--line); border-radius:10px; padding:0 7px; background:#fff; color:var(--text2); }
+button.chip { cursor:pointer; } button.chip:hover { border-color:var(--ink); color:var(--text); background:#fff; }
+.chip.on { background:#f0fdf4; border-color:#bbf7d0; color:#166534; }
+button.warnbtn { border-color:#fca5a5; color:var(--bad); background:#fff; }
+button.warnbtn:hover { background:#fef2f2; border-color:var(--bad); }
 /* quang cao shopee */
 .kpis.k6 { grid-template-columns:repeat(6, minmax(0,1fr)); }
 .drop { display:block; border:1.5px dashed #d4d4d8; border-radius:var(--radius); padding:16px; text-align:center; color:var(--muted); font-size:13px; cursor:pointer; }
@@ -714,47 +734,56 @@ function renderAds() {
     kpi('TACOS', pctv(t.tacos), a.has_sales ? 'Tốt: ' + T.tacos_low + '–' + T.tacos_high + '%' + (t.unmapped ? ' · ' + t.unmapped + ' SP chưa gán' : '') : 'Cần doanh thu Sapo') +
     kpi('CTR', pctv(t.ctr, 2), fmt(t.clicks) + ' click / ' + fmt(t.impressions) + ' xem') +
     kpi('CR', pctv(t.cr, 2), fmt(t.conversions) + ' đơn từ QC') + '</div>';
-  // theo gian hang
-  h += '<h3 style="font-size:13px; font-weight:600; margin:18px 0 0">Theo gian hàng</h3><div class="wrap" style="margin-top:10px"><table class="tight"><thead><tr>' +
-    '<th>Gian hàng</th><th>Saleman</th><th class="num">Chi phí QC</th><th class="num">Doanh số QC</th><th class="num" title="' + TH.roas + '">ROAS</th><th class="num" title="' + TH.sapo + '">DT Sapo SP chạy QC</th>' +
-    '<th class="num" title="' + TH.tacos + '">TACOS</th><th class="num" title="' + TH.ctr + '">CTR</th><th class="num" title="' + TH.cr + '">CR</th><th>Đánh giá</th><th></th></tr></thead><tbody>' +
+  // o so lieu dung chung cho 2 bang (cung thu tu nhom cot)
+  const sapoTd = m => (m.sapo_revenue == null || !m.mapped_cost ? '–' : vnd(m.sapo_revenue));
+  const moneyTds = m => '<td class="num gs">' + vnd(m.cost) + '</td><td class="num">' + vnd(m.gmv) + '</td><td class="num"><b>' + num1(m.roas) + '</b></td>';
+  const sapoTds = (m, star, title) => '<td class="num gs">' + sapoTd(m) + '</td><td class="num"' + (title ? ' title="' + esc(title) + '"' : '') + '><b>' +
+    pctv(m.tacos) + (star && m.tacos != null ? '*' : '') + '</b></td>';
+  const rateTds = m => '<td class="num gs" title="' + fmt(m.clicks) + ' click / ' + fmt(m.impressions) + ' lượt xem">' + pctv(m.ctr, 2) + '</td>' +
+    '<td class="num" title="' + fmt(m.conversions) + ' đơn / ' + fmt(m.clicks) + ' click">' + pctv(m.cr, 2) + '</td>';
+  const grp = (lead, tail) => '<tr class="grp"><th colspan="' + lead + '"></th><th colspan="3" class="gs">Chi phí &amp; doanh số QC</th>' +
+    '<th colspan="2" class="gs">So với doanh thu Sapo</th><th colspan="' + tail + '" class="gs">Hiển thị &amp; chuyển đổi</th>';
+
+  // ===== Bang 1: theo gian hang
+  h += '<div class="sec"><div class="sec-h"><div><h3>Theo gian hàng</h3><p>Dòng đậm = tổng của gian; bấm tên gian để xem sản phẩm của gian đó</p></div></div>' +
+    '<div class="wrap"><table class="tight"><thead>' + grp(2, 2) + '<th class="gs"></th><th></th></tr><tr>' +
+    '<th>Gian hàng</th><th>Saleman</th>' +
+    '<th class="num gs">Chi phí</th><th class="num">Doanh số</th><th class="num" title="' + TH.roas + '">ROAS</th>' +
+    '<th class="num gs" title="' + TH.sapo + '">DT SP chạy QC</th><th class="num" title="' + TH.tacos + '">TACOS</th>' +
+    '<th class="num gs" title="' + TH.ctr + '">CTR</th><th class="num" title="' + TH.cr + '">CR</th><th class="gs">Đánh giá</th><th></th></tr></thead><tbody>' +
     a.shops.map(s => {
       const id = s.shop + '|' + a.from + '|' + a.to;
       const both = s.shop_ads && s.product_ads;
-      const sub = (label, m, note) => '<tr class="subrow"><td>↳ ' + label + (note ? '<div class="small muted">' + esc(note) + '</div>' : '') + '</td><td></td>' +
-        '<td class="num">' + vnd(m.cost) + '</td><td class="num">' + vnd(m.gmv) + '</td><td class="num">' + num1(m.roas) + '</td>' +
-        '<td class="num">' + (m.sapo_revenue == null || !m.mapped_cost ? '–' : vnd(m.sapo_revenue)) + '</td>' +
-        '<td class="num" title="' + (label === 'Quảng cáo Shop' ? 'Chi phí QC Shop / doanh thu Sapo cả gian' : '') + '">' + pctv(m.tacos) + (label === 'Quảng cáo Shop' && m.tacos != null ? '*' : '') + '</td>' +
-        '<td class="num">' + pctv(m.ctr, 2) + '</td><td class="num">' + pctv(m.cr, 2) + '</td>' +
-        '<td class="flags">' + flags(m.flags) + '</td><td></td></tr>';
-      return '<tr><td><button class="link" style="font-size:13.5px; color:var(--text); padding:0" data-shopview="' + esc(s.shop) + '" title="Xem sản phẩm chạy QC của gian này">' + esc(s.shop) + '</button>' +
+      const sub = (label, m, note, star) => '<tr class="subrow"><td>↳ ' + label + (note ? '<div class="small muted">' + esc(note) + '</div>' : '') + '</td><td></td>' +
+        moneyTds(m) + sapoTds(m, star, star ? 'Chi phí QC Shop ÷ doanh thu Sapo cả gian' : '') + rateTds(m) +
+        '<td class="flags gs">' + flags(m.flags) + '</td><td></td></tr>';
+      return '<tr class="shop-row"><td><button class="link shop-link" data-shopview="' + esc(s.shop) + '" title="Xem sản phẩm chạy QC của gian này">' + esc(s.shop) + '</button>' +
         '<div class="small muted">' + esc(s.kinds.map(k => k === 'shop' ? 'QC Shop' : 'QC SP').join(' + ')) + ' · tải lên ' + esc(s.uploaded_at.slice(11)) + ' ' + dmy(s.uploaded_at.slice(0, 10)) + '</div>' +
         (a.has_sales && !s.found_in_sapo ? '<div class="miss">Không thấy gian này trong đơn Sapo</div>' : '') + '</td>' +
         '<td>' + (esc(s.saleman) || '<span class="muted small">–</span>') + '</td>' +
-        '<td class="num">' + vnd(s.cost) + '</td><td class="num">' + vnd(s.gmv) + '</td><td class="num">' + num1(s.roas) + '</td>' +
-        '<td class="num">' + (s.sapo_revenue == null || !s.mapped_cost ? '–' : vnd(s.sapo_revenue)) + '</td>' +
-        '<td class="num" title="Chi phí QC ÷ doanh thu cả gian: ' + pctv(s.cost_share, 2) + '"><b>' + pctv(s.tacos) + '</b></td>' +
-        '<td class="num">' + pctv(s.ctr, 2) + '</td><td class="num">' + pctv(s.cr, 2) + '</td>' +
-        '<td class="flags">' + flags(s.flags) + '</td>' +
+        moneyTds(s) + sapoTds(s, false, 'Chi phí QC ÷ doanh thu cả gian: ' + pctv(s.cost_share, 2)) + rateTds(s) +
+        '<td class="flags gs">' + flags(s.flags) + '</td>' +
         '<td><button class="link" data-del="' + esc(id) + '">' + (adsDel === id ? 'Bấm lần nữa để xoá' : 'Xoá file') + '</button></td></tr>' +
         (both ? sub('Quảng cáo Sản phẩm', s.product_ads) : '') +
-        (s.shop_ads ? sub('Quảng cáo Shop', s.shop_ads, s.shop_ads.campaigns.join(', ')) : '') +
+        (s.shop_ads ? sub('Quảng cáo Shop', s.shop_ads, s.shop_ads.campaigns.join(', '), true) : '') +
         (s.shop_ads && s.shop_ads.keywords ? '<tr class="subrow"><td colspan="11" style="padding-left:30px"><button class="link" data-kw="' + esc(s.shop) + '">' +
-          (adsKw === s.shop ? 'Ẩn' : 'Xem') + ' ' + s.shop_ads.keywords.length + ' từ khóa của Quảng cáo Shop</button></td></tr>' +
+          (adsKw === s.shop ? '▾ Ẩn' : '▸ Xem') + ' ' + s.shop_ads.keywords.length + ' từ khóa của Quảng cáo Shop</button></td></tr>' +
           (adsKw === s.shop ? s.shop_ads.keywords.map(k => '<tr class="subrow kw"><td>' + esc(k.keyword) + '<div class="small muted">' + esc(k.keyword_type) + '</div></td><td></td>' +
-            '<td class="num">' + vnd(k.cost) + '</td><td class="num">' + vnd(k.gmv) + '</td><td class="num">' + num1(k.roas) + '</td><td class="num">–</td><td class="num">–</td>' +
-            '<td class="num" title="' + fmt(k.clicks) + ' click / ' + fmt(k.impressions) + ' xem">' + pctv(k.ctr, 2) + '</td><td class="num" title="' + fmt(k.conversions) + ' đơn">' + pctv(k.cr, 2) + '</td>' +
-            '<td class="flags">' + flags(k.flags.filter(f => f.level !== 'info')) + '</td><td></td></tr>').join('') : '') : '');
+            moneyTds(k) + '<td class="num gs">–</td><td class="num">–</td>' + rateTds(k) +
+            '<td class="flags gs">' + flags(k.flags.filter(f => f.level !== 'info')) + '</td><td></td></tr>').join('') : '') : '');
     }).join('') + '</tbody></table></div>' +
-    (a.shops.some(s => s.shop_ads) ? '<p class="small muted" style="margin:6px 0 0">* Quảng cáo Shop không gắn với sản phẩm nào nên TACOS chia cho doanh thu cả gian; TACOS của dòng tổng chỉ tính Quảng cáo Sản phẩm.</p>' : '');
-  // theo san pham
+    (a.shops.some(s => s.shop_ads) ? '<div class="foot">* Quảng cáo Shop không gắn với sản phẩm nào nên TACOS chia cho doanh thu cả gian; TACOS của dòng tổng chỉ tính Quảng cáo Sản phẩm.</div>' : '') +
+    '</div>';
+
+  // ===== Bang 2: theo san pham chay QC
   const shops = adsShop ? a.shops.filter(s => s.shop === adsShop) : a.shops;
-  h += '<div class="row" style="justify-content:space-between; margin:22px 0 0"><h3 style="font-size:13px; font-weight:600; margin:0">Theo sản phẩm chạy quảng cáo</h3>' +
+  h += '<div class="sec"><div class="sec-h"><div><h3>Theo sản phẩm chạy quảng cáo</h3><p>Gán SKU Sapo cho sản phẩm để tính TACOS · rê chuột vào CTR, CR để xem số lượt</p></div>' +
     '<select id="ads-shop"><option value="">Tất cả gian hàng</option>' + a.shops.map(s => '<option' + (s.shop === adsShop ? ' selected' : '') + '>' + esc(s.shop) + '</option>').join('') + '</select></div>' +
-    '<div class="wrap" style="margin-top:10px"><table class="tight"><thead><tr><th>Sản phẩm</th><th>SKU Sapo</th><th class="num">Lượt xem</th><th class="num">Click</th>' +
-    '<th class="num" title="' + TH.ctr + '">CTR</th><th class="num">Đơn QC</th><th class="num" title="' + TH.cr + '">CR</th><th class="num">Chi phí</th><th class="num">Doanh số QC</th>' +
-    '<th class="num" title="' + TH.roas + '">ROAS</th><th class="num" title="' + TH.sapo + '">DT Sapo</th><th class="num" title="' + TH.tacos + '">TACOS</th></tr></thead><tbody>' +
-    shops.map(s => (a.shops.length > 1 && !adsShop ? '<tr class="sum"><td colspan="12">' + esc(s.shop) + '</td></tr>' : '') +
+    '<div class="wrap"><table class="tight"><thead>' + grp(2, 2) + '</tr><tr><th>Sản phẩm</th><th>SKU Sapo</th>' +
+    '<th class="num gs">Chi phí</th><th class="num">Doanh số</th><th class="num" title="' + TH.roas + '">ROAS</th>' +
+    '<th class="num gs" title="' + TH.sapo + '">DT Sapo</th><th class="num" title="' + TH.tacos + '">TACOS</th>' +
+    '<th class="num gs" title="' + TH.ctr + '">CTR</th><th class="num" title="' + TH.cr + '">CR</th></tr></thead><tbody>' +
+    shops.map(s => (a.shops.length > 1 && !adsShop ? '<tr class="sum"><td colspan="9">' + esc(s.shop) + '</td></tr>' : '') +
       s.products.filter(p => !adsOnlyUnmapped || p.unmapped).map(p => {
       const key = s.shop + '|' + p.item_id;
       let map;
@@ -762,25 +791,20 @@ function renderAds() {
       else if (adsEdit === key) map = '<input class="map-in" id="map-in" list="dl-skus" value="' + esc(p.skus.join(', ')) + '" placeholder="SKU, cách nhau dấu phẩy">' +
         '<datalist id="dl-skus">' + s.sapo_skus.slice(0, 800).map(x => '<option value="' + esc(x.sku) + '">' + esc(x.name) + '</option>').join('') + '</datalist>' +
         '<div class="row" style="margin-top:4px; gap:4px"><button class="primary sm" data-save="' + esc(p.item_id) + '">Lưu</button><button class="sm" data-cancel="1">Huỷ</button></div>';
-      else if (p.skus.length) map = '<span class="sku" style="color:var(--text2)">' + esc(p.skus.join(', ')) + '</span> <button class="link" data-edit="' + esc(key) + '">sửa</button>' +
+      else if (p.skus.length) map = p.skus.map(x => '<span class="chip on">' + esc(x) + '</span>').join(' ') + ' <button class="link" data-edit="' + esc(key) + '">sửa</button>' +
         (p.sapo_names ? '<div class="sapo-nm" title="' + esc(p.sapo_names.join(' | ')) + '">' + esc(p.sapo_names.join(' | ')) + '</div>' : '');
-      else map = '<span class="miss">Chưa gán</span> <button class="link" data-edit="' + esc(key) + '">gán</button>' +
-        (p.suggestions && p.suggestions.length ? '<div class="small muted" style="margin-top:3px">Gợi ý: ' + p.suggestions.map(g =>
-          '<button class="link" data-use="' + esc(p.item_id + '|' + g.sku) + '" title="' + esc(g.name) + '">' + esc(g.sku) + '</button>').join(' ') +
-          (p.suggestions.filter(g => g.score === p.suggestions[0].score).length > 1 ? ' <button class="link" data-use="' +
-            esc(p.item_id + '|' + p.suggestions.filter(g => g.score === p.suggestions[0].score).map(g => g.sku).join(',')) +
-            '" title="Các phân loại của cùng 1 sản phẩm">dùng cả ' + p.suggestions.filter(g => g.score === p.suggestions[0].score).length + '</button>' : '') + '</div>' : '');
-      return '<tr><td class="pname">' + esc(p.name) + '<div class="sku">' + (p.item_id ? 'Mã Shopee ' + esc(p.item_id) : '') +
+      else {
+        const sg = p.suggestions || [], same = sg.filter(g => g.score === (sg[0] || {}).score);
+        map = '<button class="sm warnbtn" data-edit="' + esc(key) + '">Gán SKU</button>' +
+          (sg.length ? '<div class="small muted" style="margin-top:5px">Gợi ý: ' + sg.map(g =>
+            '<button class="chip" data-use="' + esc(p.item_id + '|' + g.sku) + '" title="' + esc(g.name) + ' – bấm để gán">' + esc(g.sku) + '</button>').join(' ') +
+            (same.length > 1 ? ' <button class="link" data-use="' + esc(p.item_id + '|' + same.map(g => g.sku).join(',')) +
+              '" title="Các phân loại của cùng 1 sản phẩm">dùng cả ' + same.length + '</button>' : '') + '</div>' : '');
+      }
+      return '<tr><td class="pname"><div class="nm2" title="' + esc(p.name) + '">' + esc(p.name) + '</div><div class="sku">' + (p.item_id ? 'Mã Shopee ' + esc(p.item_id) : '') +
         (p.campaigns > 1 ? ' · ' + p.campaigns + ' chiến dịch' : '') + ' · ' + esc(p.status.join(', ')) + '</div><div class="fl">' + flags(p.flags) + '</div></td><td class="map">' + map + '</td>' +
-        '<td class="num">' + fmt(p.impressions) + '</td><td class="num">' + fmt(p.clicks) + '</td><td class="num">' + pctv(p.ctr, 2) + '</td>' +
-        '<td class="num">' + fmt(p.conversions) + '</td><td class="num">' + pctv(p.cr, 2) + '</td><td class="num">' + vnd(p.cost) + '</td>' +
-        '<td class="num">' + vnd(p.gmv) + '</td><td class="num">' + num1(p.roas) + '</td>' +
-        '<td class="num">' + (p.sapo_revenue == null ? '–' : vnd(p.sapo_revenue)) + '</td><td class="num"><b>' + pctv(p.tacos) + '</b></td></tr>';
-    }).join('')).join('') + '</tbody></table></div>';
-  h += '<p class="small muted" style="margin:14px 0 0">ROAS = doanh số từ QC / chi phí QC · TACOS = chi phí QC / doanh thu Sapo của SKU đã gán × 100 (tốt: ' +
-    T.tacos_low + '–' + T.tacos_high + '%) · CTR = click / lượt xem · CR = đơn từ QC / click. Cảnh báo khi ROAS &lt; ' + T.roas_min + ', CTR &lt; ' + T.ctr_min +
-    '%, CR &lt; ' + T.cr_min + '% hoặc tốn tiền mà chưa ra đơn. Doanh số QC theo Shopee (chưa trừ huỷ, hoàn); doanh thu Sapo đã trừ. ' +
-    'Gán SKU 1 lần, tool nhớ cho các kỳ sau; 1 sản phẩm Shopee có nhiều phân loại thì nhập nhiều SKU, cách nhau dấu phẩy.</p>';
+        moneyTds(p) + '<td class="num gs">' + (p.sapo_revenue == null ? '–' : vnd(p.sapo_revenue)) + '</td><td class="num"><b>' + pctv(p.tacos) + '</b></td>' + rateTds(p) + '</tr>';
+    }).join('')).join('') + '</tbody></table></div></div>';
   $('#ads-body').innerHTML = h;
   const inp = $('#map-in'); if (inp) inp.focus();
 }
