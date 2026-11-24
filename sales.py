@@ -22,12 +22,6 @@ import sync
 log = sync.log
 VN = timezone(timedelta(hours=7))
 CHANNEL_NAMES = {"shopee": "Shopee", "tiktokshop": "TikTok Shop", "lazada": "Lazada", "tiki": "Tiki"}
-PIE_TOP = 10  # bieu do tron: 10 muc lon nhat + "Cac ... khac"
-# 10 mau phan loai (da kiem tra phan biet duoc ca voi nguoi mu mau) + xam cho "khac"; giong trang web
-PIE_COLORS = ["2A78D6", "EB6834", "1BAF7A", "EDA100", "E87BA4", "008300", "6250D6", "E34948", "0094C6", "B8650A", "B4B4BB"]
-TOP_MONTH = 10  # sheet tung gian: top 10 san pham ban chay moi thang
-PRODUCT_ROW_PT = 34  # chieu cao dong san pham: du cho ten 2 dong + chu thich 10 muc cua bieu do
-AD_COLUMNS = ["Ngân sách quảng cáo", "Tổng doanh thu từ quảng cáo Shopee", "Tổng đơn hàng"]
 CACHE_SECONDS = 600
 TOP_QTY = 30  # "Top san pham ban hon 30 luot" (Yu: 30 cai, tinh theo tuan)
 # Thuong hieu = chu dau ten san pham (Sapo khong luu thuong hieu). Chu chung chung o dau -> tim tiep trong ten.
@@ -119,7 +113,6 @@ class Aggregator:
         self.products = defaultdict(lambda: [0, 0.0])    # (kenh, gian, sku) -> [so luong, doanh thu]
         self.all_products = defaultdict(lambda: [0, 0.0, set()])  # sku -> [so luong, doanh thu, {gian}]
         self.names = {}                                   # sku -> (sku goc, ten dau tien gap)
-        self.monthly = defaultdict(lambda: defaultdict(lambda: [0, 0.0]))  # (kenh, gian, thang) -> sku -> [sl, dt]
         self.cancelled = 0
 
     def add(self, o):
@@ -146,7 +139,6 @@ class Aggregator:
         # de tong doanh thu san pham khop tong doanh thu gian hang
         gross = sum(line_revenue(li) for li in lines)
         ratio = revenue / gross if gross > 0 else 0
-        monthly = self.monthly[(key[0], key[1], month)]
         for li in lines:
             qty, rev = line_qty(li), line_revenue(li) * ratio
             sku = (li.get("sku") or "").strip()
@@ -161,9 +153,6 @@ class Aggregator:
             a[0] += qty
             a[1] += rev
             a[2].add(key)
-            mp = monthly[pkey]
-            mp[0] += qty
-            mp[1] += rev
 
     def result(self):
         shops, names = self.shops, self.names
@@ -178,19 +167,15 @@ class Aggregator:
                            key=lambda r: (-shops[(r["channel"], r["shop"])]["revenue"], -r["revenue"]))
         all_rows = sorted(({"sku": names[k][0], "name": names[k][1], "qty": v[0], "revenue": v[1], "shops": len(v[2])}
                            for k, v in self.all_products.items()), key=lambda r: -r["revenue"])
-        # Top san pham tung thang cua tung gian (chi giu TOP_MONTH muc dau)
-        monthly_top = [{"channel": c, "shop": sh, "month": m,
-                        "top": [{"sku": names[k][0], "name": names[k][1], "qty": v[0], "revenue": v[1]}
-                                for k, v in sorted(prods.items(), key=lambda kv: -kv[1][1])[:TOP_MONTH]]}
-                       for (c, sh, m), prods in self.monthly.items()]
         # Nhom 1 file yeu cau: SP ban chay nhat, SP >= 30 cai, thuong hieu ban chay (theo so luong)
         per_shop = defaultdict(list)
         for r in prod_rows:
             per_shop[(r["channel"], r["shop"])].append(r)
+        names = brand_names(all_rows)
         for r in shop_rows:
             rows = per_shop.get((r["channel"], r["shop"]), [])
             r["bestseller"], r["top_qty"] = bestsellers(rows)
-            r["brands"] = brand_stats(rows, 3)
+            r["brands"] = brand_stats(rows, 3, names)
         total_best, total_top = bestsellers(all_rows)
         return {
             "top_qty_min": TOP_QTY,
@@ -198,8 +183,8 @@ class Aggregator:
             "generated_at": datetime.now(VN).strftime("%Y-%m-%d %H:%M"),
             "total": {"orders": sum(r["orders"] for r in shop_rows), "revenue": sum(r["revenue"] for r in shop_rows),
                       "cancelled": self.cancelled, "shops": len(shop_rows), "months": total_months,
-                      "bestseller": total_best, "top_qty": total_top, "brands": brand_stats(all_rows, 10)},
-            "shops": shop_rows, "products": prod_rows, "all_products": all_rows, "monthly_top": monthly_top,
+                      "bestseller": total_best, "top_qty": total_top, "brands": brand_stats(all_rows, 10, names)},
+            "shops": shop_rows, "products": prod_rows, "all_products": all_rows,
         }
 
 
@@ -228,8 +213,14 @@ def brand_key(name, known=None):
     return ""
 
 
-def brand_stats(rows, top=5):
-    """Xep hang thuong hieu theo so luong ban ra (Yu: bestseller theo so luong). rows: [{name, qty, revenue}]."""
+def brand_names(rows):
+    """{thuong hieu: cach viet pho bien nhat} tinh tren toan bo san pham -> moi gian, moi sheet viet giong nhau."""
+    return {brand_key(b["brand"]) or b["brand"]: b["brand"] for b in brand_stats(rows, 10 ** 6)}
+
+
+def brand_stats(rows, top=5, names=None):
+    """Xep hang thuong hieu theo so luong ban ra (Yu: bestseller theo so luong). rows: [{name, qty, revenue}].
+    names: ket qua brand_names() de thong nhat cach viet."""
     known = {k for k in (brand_key(r["name"]) for r in rows) if k}
     agg, spell = {}, {}
     for r in rows:
@@ -240,7 +231,7 @@ def brand_stats(rows, top=5):
         if w:
             spell.setdefault(k, {}).setdefault(w, 0)
             spell[k][w] += 1
-    show = lambda k: max(spell[k].items(), key=lambda kv: kv[1])[0] if k in spell else k
+    show = lambda k: (names or {}).get(k) or (max(spell[k].items(), key=lambda kv: kv[1])[0] if k in spell else k)
     out = sorted(({"brand": show(k), "qty": v[0], "revenue": v[1], "products": v[2]} for k, v in agg.items()),
                  key=lambda b: (-b["qty"], -b["revenue"]))
     return out[:top]
@@ -280,42 +271,33 @@ def get_report(start, end, progress=None, fresh=False):
 # ---------------------------------------------------------------- excel
 
 def to_xlsx(report, ads_analysis=None):
-    """ads_analysis: ket qua ads.analyze() cung ky (neu co) -> dien san cot quang cao + them sheet Quang cao Shopee."""
+    """Excel theo file yeu cau BAO_CAO_SHOPEE_DEMO_AI + tra loi cua Yu (24/11/2026). Chi gian Shopee.
+    1. Theo doi tuan (Shopee Ads Weekly Tracker): moi gian 1 dong, du 4 nhom
+    2. Quang cao Shopee: chi tiet QC San pham / QC Shop / tu khoa (khi co file Shopee Ads cung ky)
+    3. Top san pham: tung gian, xep theo so luong, danh dau SP ban >= TOP_QTY cai
+    4. Thuong hieu: thuong hieu ban chay tung gian + tat ca gian (theo so luong)"""
     import ads
     from openpyxl import Workbook
-    from openpyxl.chart import BarChart, PieChart, Reference
     from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
     from openpyxl.utils import get_column_letter
 
-    head_font, bold = Font(bold=True, color="FFFFFF"), Font(bold=True)
+    head_font = Font(bold=True, color="FFFFFF")
     head_fill = PatternFill("solid", fgColor="3F3F46")
-    yu_fill = PatternFill("solid", fgColor="FFF4CC")
     thin = Side(style="thin", color="D4D4D8")
     box = Border(left=thin, right=thin, top=thin, bottom=thin)
-    money, count = "#,##0", "#,##0"
     d1, d2 = (datetime.strptime(report[k], "%Y-%m-%d") for k in ("from", "to"))
     period = f"Từ {d1:%d/%m/%Y} đến {d2:%d/%m/%Y}"
-    note = "Không tính đơn đã huỷ; doanh thu đã trừ tiền hoàn (trả hàng). Nguồn: đơn hàng Sapo."
-    vnd_h = "Tổng doanh thu (đ)"
-    rev_h = "Doanh thu (đ)"
+    note = "Chỉ gian Shopee. Không tính đơn đã huỷ; doanh thu đã trừ tiền hoàn (trả hàng). Nguồn: đơn hàng Sapo + file Quảng cáo Shopee."
 
-    def head(c):
-        c.font, c.fill, c.border = head_font, head_fill, box
-        c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
-
-    def sheet(ws, title, headers, rows, formats, widths, yu_cols=0, top=1):
+    def sheet(ws, title, headers, rows, formats, widths, top=1):
         ws.cell(top, 1, title).font = Font(bold=True, size=14)
         ws.cell(top + 1, 1, period)
         ws.cell(top + 2, 1, note).font = Font(italic=True, color="71717A")
         hr = top + 4
         for i, h in enumerate(headers, 1):
-            ws.cell(hr, i, h)
-        for i, _ in enumerate(headers, 1):
-            c = ws.cell(hr, i)
+            c = ws.cell(hr, i, h)
             c.font, c.fill, c.border = head_font, head_fill, box
             c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
-            if i > len(headers) - yu_cols:
-                c.fill, c.font = PatternFill("solid", fgColor="A16207"), head_font
         for k, r in enumerate(rows, hr + 1):
             for i, v in enumerate(r, 1):
                 ws.cell(k, i, v)
@@ -324,8 +306,6 @@ def to_xlsx(report, ads_analysis=None):
                 c.border = box
                 if f:
                     c.number_format = f
-                if i > len(headers) - yu_cols:
-                    c.fill = yu_fill
         for i, w in enumerate(widths, 1):
             ws.column_dimensions[get_column_letter(i)].width = w
         ws.row_dimensions[hr].height = 44
@@ -333,186 +313,79 @@ def to_xlsx(report, ads_analysis=None):
         return hr
 
     wb = Workbook()
-
-    # ======== Tong Quan (theo file mau Report_Yu): bang gian hang + 3 cot de trong cho Yu, bieu do ben duoi
-    ws = wb.active
-    ws.title = "Tổng Quan"
     ad_shops = ads.by_shop(ads_analysis) if ads_analysis and ads_analysis.get("has_sales") else {}
-
-    def ad_cols(r):
-        a = ad_shops.get(ads.norm(r["shop"])) if r["channel"] == "Shopee" else None
-        return [round(a["cost"]), round(a["gmv"]), round(a["conversions"])] if a else [None, None, None]
-
-    rows = [[r["shop"], r["channel"], r["orders"], round(r["revenue"])] + ad_cols(r) for r in report["shops"]]
-    hr = sheet(ws, "Tổng doanh thu theo gian hàng Sàn",
-               ["Gian hàng", "Kênh bán hàng", "Số lượng đơn hàng", vnd_h] + AD_COLUMNS,
-               rows, [None, None, count, money, money, money, count], [27, 22, 18, 20, 20, 22, 16], yu_cols=3, top=2)
-    last = hr + len(rows)
-    t = report["total"]
-    total_row = last + 1
-    for i, v in enumerate(["TỔNG CỘNG", "", t["orders"], round(t["revenue"])] +
-                          [f"=SUM({get_column_letter(i)}{hr + 1}:{get_column_letter(i)}{last})" for i in (5, 6, 7)], 1):
-        ws.cell(total_row, i, v)
-    for i, f in enumerate([None, None, count, money, money, money, count], 1):
-        c = ws.cell(total_row, i)
-        c.font, c.border = bold, box
-        if f:
-            c.number_format = f
-    ws.cell(total_row + 1, 1, ("Các cột màu vàng lấy từ file Quảng cáo Shopee đã tải lên (cùng kỳ); gian chưa có file để trống cho Yu điền."
-                                    if ad_shops else "Các cột màu vàng để trống cho Yu điền số liệu quảng cáo.")).font = Font(italic=True, color="A16207")
-    chart_row = total_row + 3
-    ws.cell(chart_row, 2, "BIỂU ĐỒ").font = bold
-    shops = [r for r in report["shops"] if r["revenue"] > 0]
-    if shops:
-        # Bang ty trong cho bieu do tron: 10 gian lon nhat + "Cac gian khac" (cot I-K, nhu file mau)
-        top, rest = shops[:PIE_TOP], shops[PIE_TOP:]
-        pie_rows = [(r["shop"] if r["channel"] == "Shopee" else f'{r["shop"]} ({r["channel"]})', r["revenue"]) for r in top]
-        if rest:
-            pie_rows.append((f"Các gian khác ({len(rest)})", sum(r["revenue"] for r in rest)))
-        total = sum(v for _, v in pie_rows)
-        ws.cell(hr, 9, "Tỷ trọng doanh thu").font = bold
-        for j, h in enumerate(["Gian hàng", rev_h, "Tỷ trọng"], 9):
-            head(ws.cell(hr + 1, j, h))
-        for k, (name, v) in enumerate(pie_rows, hr + 2):
-            for j, (val, f) in enumerate([(name, None), (round(v), money), (v / total, "0.0%")], 9):
-                c = ws.cell(k, j, val)
-                c.border = box
-                if f:
-                    c.number_format = f
-        pie_last = hr + 1 + len(pie_rows)
-        for j, w in zip("IJK", (32, 18, 10)):
-            ws.column_dimensions[j].width = w
-        pie = PieChart()
-        pie.title = "Tỷ trọng doanh thu theo gian hàng"
-        pie.add_data(Reference(ws, min_col=10, min_row=hr + 1, max_row=pie_last), titles_from_data=True)
-        pie.set_categories(Reference(ws, min_col=9, min_row=hr + 2, max_row=pie_last))
-        pie.dataLabels = only_percent()
-        color_points(pie, len(pie_rows))
-        pie.height, pie.width = 12, 24
-        ws.add_chart(pie, f"A{chart_row + 1}")
-
-        chart = BarChart()
-        chart.type = "bar"
-        chart.title = "Doanh thu theo gian hàng"
-        chart.y_axis.title = "Doanh thu (đ)"
-        chart.y_axis.numFmt = "#,##0"
-        chart.y_axis.majorGridlines = None
-        chart.x_axis.scaling.orientation = "maxMin"  # gian hang lon nhat o tren
-        chart.legend = None
-        chart.x_axis.delete = chart.y_axis.delete = False  # openpyxl 3.1 mac dinh an truc -> mat ten gian hang
-        chart.y_axis.crosses = "max"  # truc so o duoi khi dao thu tu gian hang
-        chart.add_data(Reference(ws, min_col=4, min_row=hr, max_row=last), titles_from_data=True)
-        chart.set_categories(Reference(ws, min_col=1, min_row=hr + 1, max_row=last))
-        chart.series[0].graphicalProperties.solidFill = "3F3F46"
-        chart.height, chart.width = max(12, 0.75 * len(report["shops"]) + 3), 22
-        ws.add_chart(chart, f"I{chart_row + 1}")
-
-    # ======== Quang cao Shopee (tu file Shopee Ads da tai len, cung ky)
-    tracker_sheet(wb.create_sheet("Theo dõi tuần", 1), report, ad_shops, sheet)
+    ws = wb.active
+    ws.title = "Theo dõi tuần"
+    tracker_sheet(ws, report, ad_shops, sheet)
     if ad_shops:
-        ads_sheet(wb.create_sheet("Quảng cáo Shopee", 2), ads_analysis, sheet, period)
-
-    # ======== Moi gian hang 1 sheet (theo sheet "Ulanzi HN" cua file mau)
-    tops = {(m["channel"], m["shop"], m["month"]): m["top"] for m in report.get("monthly_top", [])}
-    one_year = len({m["month"][:4] for m in t["months"]}) <= 1
-    month_cell = lambda m: int(m[5:]) if one_year else f"{int(m[5:])}/{m[:4]}"
-    used_names = {"Tổng Quan"}
-    yellow = PatternFill("solid", fgColor="FFEB9C")    # kieu "Neutral" cua Excel nhu file mau
-    yellow_font = Font(color="9C5700")
-    center = Alignment(horizontal="center", vertical="center", wrap_text=True)
-
-    def shop_head(c, text):
-        c.value, c.font, c.fill, c.border, c.alignment = text, yellow_font, yellow, box, center
-
-    def shop_cell(c, value, fmt=None, size=12):
-        c.value, c.border, c.alignment, c.font = value, box, center, Font(size=size)
-        if fmt:
-            c.number_format = fmt
-
-    for r in report["shops"]:
-        if r["orders"] <= 0:
-            continue
-        channel_ads = "Shopee" if r["channel"] == "Shopee" else r["channel"].replace(" Shop", "")
-        name = sheet_name(r["shop"], r["channel"], used_names)
-        ws = wb.create_sheet(name)
-        for col, w in zip("ABCDEFG", (14, 62, 18, 20, 24, 24, 4)):
-            ws.column_dimensions[col].width = w
-        # tieu de
-        ws.merge_cells("A2:F2")
-        c = ws["A2"]
-        c.value = f"BÁO CÁO DOANH THU VÀ CHI PHÍ QUẢNG CÁO {channel_ads.upper()} — {r['shop'].upper()}"
-        c.font, c.alignment = Font(bold=True, size=12), Alignment(horizontal="left", vertical="center", wrap_text=True)
-        ws.row_dimensions[2].height = 24
-        ws["A3"] = f"{r['shop']} · {r['channel']} · {period}"
-        ws["A3"].font = Font(italic=True, color="71717A")
-        # bang theo thang
-        heads = ["Tháng", "Doanh Thu", "Tổng Đơn Hàng", f"Chi Phí Quảng Cáo {channel_ads}",
-                 f"Doanh Thu Từ Quảng Cáo {channel_ads}", "Tổng Đơn Hàng Từ Quảng Cáo"]
-        for j, h in enumerate(heads, 1):
-            shop_head(ws.cell(4, j), h)
-        ws.row_dimensions[4].height = 34
-        row = 5
-        for m in r["months"]:
-            shop_cell(ws.cell(row, 1), month_cell(m["month"]))
-            shop_cell(ws.cell(row, 2), round(m["revenue"]), "#,##0")
-            shop_cell(ws.cell(row, 3), m["orders"], "#,##0")
-            for j in (4, 5, 6):  # Yu dien
-                shop_cell(ws.cell(row, j), None, '_(* #,##0_);_(* \\(#,##0\\);_(* "-"??_);_(@_)')
-            row += 1
-        # top 10 san pham ban chay tung thang
-        row += 1
-        ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=3)
-        c = ws.cell(row, 1, f"{TOP_MONTH} SẢN PHẨM BÁN CHẠY NHẤT TRONG THÁNG")
-        c.font, c.alignment = Font(bold=True, size=12), Alignment(horizontal="left", vertical="center")
-        ws.row_dimensions[row].height = 30
-        row += 2
-        for j, h in enumerate(["Tháng", "Tên sản phẩm", "Số lượng", "Doanh thu"], 1):
-            shop_head(ws.cell(row, j), h)
-        ws.row_dimensions[row].height = 34
-        ws.cell(row, 6, "BIỂU ĐỒ % CỦA 10 SẢN PHẨM BÁN CHẠY").font = bold
-        row += 1
-        for m in r["months"]:
-            items = tops.get((r["channel"], r["shop"], m["month"]), [])
-            first = row
-            n = TOP_MONTH  # moi thang dung du 10 dong de bieu do khong chong len nhau
-            for k in range(n):
-                it = items[k] if k < len(items) else None
-                shop_cell(ws.cell(row, 2), it["name"] if it else ("Không có đơn" if k == 0 and not items else None))
-                shop_cell(ws.cell(row, 3), it["qty"] if it else None, "#,##0")
-                shop_cell(ws.cell(row, 4), round(it["revenue"]) if it else None, "#,##0")
-                ws.row_dimensions[row].height = PRODUCT_ROW_PT
-                row += 1
-            ws.merge_cells(start_row=first, start_column=1, end_row=row - 1, end_column=1)
-            shop_cell(ws.cell(first, 1), month_cell(m["month"]))
-            if items:
-                pie = PieChart()
-                pie.title = f"Tháng {int(m['month'][5:])}/{m['month'][:4]}"
-                pie.add_data(Reference(ws, min_col=4, min_row=first, max_row=first + len(items) - 1))
-                pie.set_categories(Reference(ws, min_col=2, min_row=first, max_row=first + len(items) - 1))
-                pie.dataLabels = only_percent()
-                color_points(pie, len(items))
-                pie.legend.txPr = small_text(800)  # chu 8pt de chu thich hien du 10 ten san pham dai
-                pie.height, pie.width = PRODUCT_ROW_PT * n * 2.54 / 72 * 0.97, 27  # cm, vua khit 10 dong cua thang
-                ws.add_chart(pie, f"F{first}")
-
-    # ======== Phu luc: danh sach day du san pham
-    ws = wb.create_sheet("PL1. SP theo gian hàng")
-    sheet(ws, "Phụ lục: doanh thu theo sản phẩm — chi tiết từng gian hàng",
-          ["Gian hàng", "Kênh bán hàng", "Mã SKU", "Tên sản phẩm", "Số lượng", vnd_h],
-          [[r["shop"], r["channel"], r["sku"], r["name"], r["qty"], round(r["revenue"])] for r in report["products"]],
-          [None, None, None, None, count, money], [30, 14, 14, 60, 10, 20])
-    ws.auto_filter.ref = f"A5:F{max(ws.max_row, 5)}"
-
-    ws = wb.create_sheet("PL2. SP tất cả gian")
-    sheet(ws, "Phụ lục: doanh thu theo sản phẩm — tổng tất cả các gian hàng",
-          ["Mã SKU", "Tên sản phẩm", "Số lượng", vnd_h, "Số gian hàng có bán"],
-          [[r["sku"], r["name"], r["qty"], round(r["revenue"]), r["shops"]] for r in report["all_products"]],
-          [None, None, count, money, count], [14, 64, 10, 20, 14])
-    ws.auto_filter.ref = f"A5:E{ws.max_row}"
-
+        ads_sheet(wb.create_sheet("Quảng cáo Shopee"), ads_analysis, sheet, period)
+    names = brand_names(report["all_products"])
+    top_sheet(wb.create_sheet("Top sản phẩm"), report, sheet, names)
+    brand_sheet(wb.create_sheet("Thương hiệu"), report, sheet, names)
     buf = io.BytesIO()
     wb.save(buf)
     return fix_core_dates(buf.getvalue())
+
+
+def _shopee_shops(report):
+    """[(gian, [san pham cua gian])] cac gian Shopee, gian doanh thu lon truoc."""
+    prods = defaultdict(list)
+    for p in report["products"]:
+        if p["channel"] == "Shopee":
+            prods[p["shop"]].append(p)
+    return [(r, prods.get(r["shop"], [])) for r in report["shops"] if r["channel"] == "Shopee"]
+
+
+def top_sheet(ws, report, sheet, names):
+    """Nhom 1: top san pham tung gian theo so luong; luon co it nhat 5 SP dau de thay bestseller."""
+    import ads
+    from openpyxl.styles import Font
+    sm, rows, best_rows = ads.salesmen(), [], []
+    for r, prods in _shopee_shops(report):
+        known = {k for k in (brand_key(p["name"]) for p in prods) if k}
+        ranked = sorted((p for p in prods if p["qty"] > 0), key=lambda p: (-p["qty"], -p["revenue"]))
+        n = max(5, sum(1 for p in ranked if p["qty"] >= TOP_QTY))
+        for i, p in enumerate(ranked[:n], 1):
+            if i == 1:
+                best_rows.append(len(rows))
+            rows.append([r["shop"], ads.salesman_of(r["shop"], sm), i, p["sku"], p["name"], names.get(brand_key(p["name"], known), brand_key(p["name"], known)) or "Khác",
+                         p["qty"], round(p["revenue"]), "✓" if p["qty"] >= TOP_QTY else ""])
+    hr = sheet(ws, f"Top sản phẩm bán chạy từng gian (theo số lượng; ✓ = bán ≥ {TOP_QTY} cái)",
+               ["Gian hàng", "Saleman", "Hạng", "SKU", "Tên sản phẩm", "Thương hiệu", "Số lượng", "Doanh thu (đ)", f"≥ {TOP_QTY} cái"],
+               rows, [None, None, "0", None, None, None, "#,##0", "#,##0", None], [24, 11, 6, 12, 60, 14, 10, 16, 9])
+    bold = Font(bold=True)
+    for k in best_rows:  # hang 1 = bestseller
+        for c in ws[hr + 1 + k]:
+            c.font = bold
+    if rows:
+        ws.auto_filter.ref = f"A{hr}:I{hr + len(rows)}"
+
+
+def brand_sheet(ws, report, sheet, names):
+    """Nhom 1: thuong hieu ban chay (theo so luong) - tat ca gian Shopee + tung gian."""
+    import ads
+    from openpyxl.styles import Font, PatternFill
+    sm, rows, totals = ads.salesmen(), [], []
+    shops = _shopee_shops(report)
+    merged = {}
+    for _, prods in shops:  # gop SP cua cac gian theo SKU de dem so SP khong trung
+        for p in prods:
+            m = merged.setdefault(p["sku"].upper() or p["name"], {"name": p["name"], "qty": 0, "revenue": 0.0})
+            m["qty"] += p["qty"]; m["revenue"] += p["revenue"]
+    for label, saleman, prods in [("TẤT CẢ GIAN SHOPEE", "", list(merged.values()))] + [(r["shop"], ads.salesman_of(r["shop"], sm), ps) for r, ps in shops]:
+        stats = brand_stats(prods, 10 if not saleman and label.startswith("TẤT CẢ") else 5, names)
+        totals.append(len(rows))
+        for i, b in enumerate(stats, 1):
+            rows.append([label, saleman, i, b["brand"], b["qty"], round(b["revenue"]), b["products"]])
+    hr = sheet(ws, "Thương hiệu bán chạy (theo số lượng; thương hiệu = chữ đầu tên sản phẩm)",
+               ["Gian hàng", "Saleman", "Hạng", "Thương hiệu", "Số lượng", "Doanh thu (đ)", "Số sản phẩm"],
+               rows, [None, None, "0", None, "#,##0", "#,##0", "#,##0"], [24, 11, 6, 18, 11, 16, 11])
+    fill = PatternFill("solid", fgColor="F4F4F5")
+    for k in range(totals[1] if len(totals) > 1 else len(rows)):  # khoi tong tat ca gian
+        for c in ws[hr + 1 + k]:
+            c.fill = fill
+    for k in totals:
+        ws.cell(hr + 1 + k, 4).font = Font(bold=True)
 
 
 def tracker_sheet(ws, report, ad_shops, sheet):
@@ -615,48 +488,12 @@ def fix_core_dates(data):
     return out.getvalue()
 
 
-def sheet_name(shop, channel, used):
-    """Ten sheet hop le cua Excel (<= 31 ky tu, khong []:*?/\\), khong trung."""
-    base = "".join("_" if ch in '[]:*?/\\' else ch for ch in shop).strip(" '") or "Gian"
-    for cand in (base, f"{base} ({channel.replace(' Shop', '')})"):
-        cand = cand[:31]
-        if cand.lower() not in {u.lower() for u in used}:
-            used.add(cand)
-            return cand
-    n = 2
-    while f"{base[:27]} ({n})".lower() in {u.lower() for u in used}:
-        n += 1
-    used.add(f"{base[:27]} ({n})")
-    return f"{base[:27]} ({n})"
 
 
-def only_percent():
-    """Nhan bieu do tron chi hien %. Phai tat ro cac muc khac, neu khong Excel hien ca 'Series1; ten; gia tri'."""
-    from openpyxl.chart.label import DataLabelList
-    return DataLabelList(showPercent=True, showVal=False, showCatName=False, showSerName=False, showLegendKey=False,
-                         showLeaderLines=False)
-
-
-def small_text(size):
-    """Co chu (1/100 pt) cho chu thich bieu do."""
-    from openpyxl.chart.text import RichText
-    from openpyxl.drawing.text import CharacterProperties, Paragraph, ParagraphProperties
-    return RichText(p=[Paragraph(pPr=ParagraphProperties(defRPr=CharacterProperties(sz=size)),
-                                 endParaRPr=CharacterProperties(sz=size))])
-
-
-def color_points(pie, n):
-    """To mau co dinh theo thu tu cho bieu do tron Excel (giong trang web)."""
-    from openpyxl.chart.marker import DataPoint
-    for k, color in enumerate(PIE_COLORS[:n]):
-        pt = DataPoint(idx=k)
-        pt.graphicalProperties.solidFill = color
-        pt.graphicalProperties.line.solidFill = "FFFFFF"
-        pie.series[0].dPt.append(pt)
 
 
 def xlsx_name(report):
-    return f"doanhthu_san_{report['from']}_{report['to']}.xlsx"
+    return f"bao_cao_shopee_ads_{report['from']}_{report['to']}.xlsx"
 
 
 def main():
