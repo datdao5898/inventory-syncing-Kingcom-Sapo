@@ -15,6 +15,7 @@ from datetime import datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, unquote, urlparse
 
+import ads
 import sales
 import sync
 
@@ -315,13 +316,22 @@ class Handler(BaseHTTPRequestHandler):
                 self.send(200, f.read(), "text/html; charset=utf-8")
         elif path == "/api/sales":
             self.send_json(sales_job.status())
+        elif path == "/api/ads":
+            q = parse_qs(urlparse(self.path).query)
+            start, end = q.get("from", [""])[0], q.get("to", [""])[0]
+            plist = ads.periods()
+            if not (start and end) and plist:
+                start, end = plist[0]["from"], plist[0]["to"]
+            report = None if sales_job.running else sales_job.report
+            self.send_json({"periods": plist, "thresholds": ads.THRESHOLDS,
+                            "analysis": ads.analyze(start, end, report) if start and end else None})
         elif path == "/api/sales.xlsx":
             r = sales_job.report
             if not r or sales_job.running:
                 self.send(404, "Chua co du lieu, hay bam Lay du lieu truoc", "text/plain; charset=utf-8")
                 return
             try:
-                data = sales.to_xlsx(r)
+                data = sales.to_xlsx(r, ads.analyze(r["from"], r["to"], r))
             except ImportError:
                 self.send(500, "May chu thieu thu vien openpyxl. Hay bao David Dao.", "text/plain; charset=utf-8")
                 return
@@ -345,6 +355,9 @@ class Handler(BaseHTTPRequestHandler):
             return
         path = urlparse(self.path).path
         length = int(self.headers.get("Content-Length") or 0)
+        if length > 20 * 1024 * 1024:
+            self.send_json({"ok": False, "error": "File quá lớn (tối đa 20 MB)"}, 413)
+            return
         body = json.loads(self.rfile.read(length) or b"{}")
         if path.startswith("/api/run/") and path.rsplit("/", 1)[1] in ("check", "preview", "apply"):
             job = path.rsplit("/", 1)[1]
@@ -362,6 +375,27 @@ class Handler(BaseHTTPRequestHandler):
                 return
             ok = sales_job.start(start, end, bool(body.get("fresh")))
             self.send_json({"ok": ok}, 200 if ok else 409)
+        elif path == "/api/ads/upload":
+            try:
+                parsed = ads.parse_csv(str(body.get("content", "")))
+            except ValueError as e:
+                self.send_json({"ok": False, "error": f"{body.get('name', 'File')}: {e}"}, 400)
+                return
+            replaced = ads.add_upload(parsed)
+            sync.log.info("Quảng cáo Shopee: tải lên %s (%s → %s, %s chiến dịch)%s", parsed["shop"], parsed["from"],
+                          parsed["to"], len(parsed["campaigns"]), " - thay bản cũ" if replaced else "")
+            self.send_json({"ok": True, "shop": parsed["shop"], "from": parsed["from"], "to": parsed["to"],
+                            "campaigns": len(parsed["campaigns"]), "replaced": replaced})
+        elif path == "/api/ads/map":
+            item, skus = str(body.get("item_id", "")), body.get("skus") or []
+            if not item.isdigit() or not isinstance(skus, list):
+                self.send_json({"ok": False, "error": "Dữ liệu không hợp lệ"}, 400)
+                return
+            ads.set_map(item, [str(x) for x in skus])
+            self.send_json({"ok": True})
+        elif path == "/api/ads/delete":
+            ok = ads.delete_upload(str(body.get("shop", "")), str(body.get("from", "")), str(body.get("to", "")))
+            self.send_json({"ok": ok}, 200 if ok else 404)
         elif path == "/api/settings":
             site = self.site()
             minutes = max(float(body.get("minutes", state.settings["minutes"])), 5)

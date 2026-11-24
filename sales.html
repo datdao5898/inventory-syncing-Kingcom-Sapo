@@ -117,12 +117,37 @@ td.num, th.num { text-align:right; white-space:nowrap; font-variant-numeric:tabu
 .more:empty { display:none; }
 .toast { position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:var(--ink); color:#fff; padding:10px 16px; border-radius:6px; display:none; z-index:30; max-width:90vw; font-size:13px; }
 
+/* quang cao shopee */
+.kpis.k6 { grid-template-columns:repeat(6, minmax(0,1fr)); }
+.drop { display:block; border:1.5px dashed #d4d4d8; border-radius:var(--radius); padding:16px; text-align:center; color:var(--muted); font-size:13px; cursor:pointer; }
+.drop.on, .drop:hover { border-color:var(--ink); background:var(--hover); color:var(--text); }
+.drop b { color:var(--text); }
+.notice { background:#fffbeb; border:1px solid #fde68a; border-radius:6px; padding:10px 12px; font-size:13px; margin:12px 0; display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+.flag { display:inline-block; font-size:11.5px; padding:1px 8px; border-radius:10px; margin:1px 4px 1px 0; line-height:1.5; }
+.flag.bad { background:#fee2e2; color:#991b1b; } .flag.warn { background:#fef3c7; color:#92400e; }
+.flag.good { background:#dcfce7; color:#166534; } .flag.info { background:#f4f4f5; color:#52525b; }
+td.flags { min-width:240px; white-space:normal; }
+td.pname { min-width:260px; max-width:420px; }
+td.pname .fl { margin-top:5px; }
+td.map { min-width:160px; }
+.sapo-nm { font-size:11.5px; color:var(--muted); max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+button.link { border:0; background:none; padding:0 2px; color:var(--muted); text-decoration:underline; font-weight:400; font-size:12px; }
+button.link:hover { color:var(--text); background:none; }
+button.sm { padding:3px 9px; font-size:12px; }
+.map-in { width:140px; font:inherit; font-size:12px; padding:3px 6px; border:1px solid var(--line); border-radius:4px; }
+.miss { color:var(--bad); font-size:12px; }
+tr.sum td { background:var(--hover); font-weight:600; }
+.tight th, .tight td { padding:9px 10px; }
+.tight th:first-child, .tight td:first-child { padding-left:18px; }
+
 @media (max-width:900px) {
+  .kpis.k6 { grid-template-columns:repeat(3, minmax(0,1fr)); }
   .kpis { grid-template-columns:repeat(2, minmax(0,1fr)); }
   .pie-wrap, .sub-card .pie-wrap { grid-template-columns:1fr; } .pie { max-width:260px; margin:0 auto; }
   .detail { grid-template-columns:1fr; }
 }
 @media (max-width:640px) {
+  .kpis.k6 { grid-template-columns:repeat(2, minmax(0,1fr)); }
   .top { padding:12px 16px; } .content { padding:14px 16px 40px; }
   .kpi .val { font-size:22px; }
   th, td { padding:9px 12px; } td:first-child { min-width:160px; }
@@ -188,6 +213,17 @@ td.num, th.num { text-align:right; white-space:nowrap; font-variant-numeric:tabu
 
     <p class="small muted">File Excel theo mẫu Report_Yu: trang <b>Tổng Quan</b> (bảng gian hàng + biểu đồ); <b>mỗi gian hàng 1 trang</b> (doanh thu, tổng đơn từng tháng, 3 cột quảng cáo để trống cho Yu điền; 10 sản phẩm bán chạy nhất từng tháng kèm biểu đồ %); 2 trang phụ lục danh sách sản phẩm đầy đủ.</p>
   </div>
+
+  <div class="card" id="ads-card">
+    <div class="card-h">
+      <div><h2>3. Quảng cáo Shopee</h2><p>Tải file báo cáo xuất từ Quảng cáo Shopee (Dịch vụ Hiển thị, dạng .csv, mỗi file 1 gian hàng) để tính ROAS, TACOS, CTR, CR và đánh giá tự động</p></div>
+      <select id="ads-period" title="Chọn kỳ quảng cáo đã tải lên" style="display:none"></select>
+    </div>
+    <label class="drop" id="ads-drop"><input type="file" id="ads-file" accept=".csv,text/csv" multiple hidden>
+      <b>Bấm để chọn</b> hoặc kéo thả file .csv vào đây · chọn được nhiều file (nhiều gian) cùng lúc</label>
+    <div id="ads-msg" class="small" style="margin-top:8px"></div>
+    <div id="ads-body"></div>
+  </div>
 </div>
 <div class="tip" id="tip"></div>
 <div class="toast" id="toast"></div>
@@ -221,6 +257,7 @@ async function load() {
     $('#status').innerHTML = '<div class="row"><div class="spinner"></div>Đang lấy đơn hàng từ Sapo' + (t ? ': ' + fmt(n) + ' / ' + fmt(t) + ' đơn' : '...') + '</div>' +
       '<div class="progress"><i style="width:' + (t ? Math.round(100 * n / t) : 3) + '%"></i></div>';
     timer = setTimeout(load, 1500);
+    if (adsData) renderAds();
     return;
   }
   if (r.error) { $('#status').innerHTML = '<span style="color:var(--bad)">' + esc(r.error) + '</span>'; return; }
@@ -263,6 +300,7 @@ function render() {
   $('#shop').value = shopSel;
   renderDetail();
   renderProducts();
+  loadAds();
 }
 
 /* ---------- bieu do ---------- */
@@ -381,5 +419,138 @@ $('#shop').onchange = e => { shopSel = e.target.value; limit = 100; renderDetail
 $('#q').oninput = () => { limit = 100; renderProducts(); };
 document.addEventListener('click', e => { if (e.target.id === 'more-btn') { limit += 200; renderProducts(); } });
 
+/* ---------- quang cao shopee ---------- */
+let adsData = null, adsPeriod = '', adsShop = '', adsEdit = '', adsDel = '';
+const num1 = v => v == null ? '–' : v.toLocaleString('vi-VN', {maximumFractionDigits: 1});
+const pctv = (v, d = 1) => v == null ? '–' : v.toLocaleString('vi-VN', {maximumFractionDigits: d}) + '%';
+const flags = fs => (fs || []).map(f => '<span class="flag ' + f.level + '">' + esc(f.text) + '</span>').join('');
+async function loadAds() {
+  const q = adsPeriod ? '?from=' + adsPeriod.split('|')[0] + '&to=' + adsPeriod.split('|')[1] : '';
+  const r = (await api('api/ads' + q).catch(() => ({}))).data;
+  if (!r) return;
+  adsData = r;
+  if (r.analysis) adsPeriod = r.analysis.from + '|' + r.analysis.to;
+  renderAds();
+}
+async function uploadAds(files) {
+  files = [...files].filter(f => /\.csv$/i.test(f.name));
+  if (!files.length) { toast('Chỉ nhận file .csv xuất từ Quảng cáo Shopee'); return; }
+  const out = [];
+  $('#ads-msg').innerHTML = '<div class="row"><div class="spinner"></div>Đang đọc ' + files.length + ' file...</div>';
+  for (const f of files) {
+    const r = await api('api/ads/upload', {method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({name: f.name, content: await f.text()})}).catch(() => ({data: null}));
+    const d = r.data;
+    if (d && d.ok) { out.push('✓ ' + esc(d.shop) + ' · ' + dmy(d.from) + ' – ' + dmy(d.to) + ' · ' + d.campaigns + ' chiến dịch' + (d.replaced ? ' (thay file cũ)' : '')); adsPeriod = d.from + '|' + d.to; }
+    else out.push('<span style="color:var(--bad)">✗ ' + esc((d && d.error) || f.name + ': lỗi tải lên') + '</span>');
+  }
+  $('#ads-msg').innerHTML = out.join('<br>');
+  $('#ads-file').value = '';
+  loadAds();
+}
+$('#ads-file').onchange = e => uploadAds(e.target.files);
+const drop = $('#ads-drop');
+['dragenter', 'dragover'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('on'); }));
+['dragleave', 'drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('on'); }));
+drop.addEventListener('drop', e => uploadAds(e.dataTransfer.files));
+$('#ads-period').onchange = e => { adsPeriod = e.target.value; adsShop = ''; adsEdit = ''; loadAds(); };
+
+function renderAds() {
+  const r = adsData, a = r.analysis, sel = $('#ads-period');
+  sel.style.display = r.periods.length ? '' : 'none';
+  sel.innerHTML = r.periods.map(p => '<option value="' + p.from + '|' + p.to + '">Kỳ ' + dmy(p.from) + ' – ' + dmy(p.to) + ' · ' + p.shops.length + ' gian</option>').join('');
+  sel.value = adsPeriod;
+  if (!a || !a.shops.length) { $('#ads-body').innerHTML = '<p class="small muted" style="margin:12px 0 0">Chưa có file nào được tải lên.</p>'; return; }
+  const t = a.total, T = a.thresholds, running = $('#run').disabled;
+  let h = '';
+  if (!a.has_sales) {
+    h += '<div class="notice">Để tính <b>TACOS</b> và gợi ý SKU, cần doanh thu Sapo <b>cùng kỳ ' + dmy(a.from) + ' – ' + dmy(a.to) + '</b>.' +
+      (running ? '<span class="row"><span class="spinner"></span>Đang lấy dữ liệu Sapo...</span>'
+               : '<button class="primary sm" id="ads-sales">Lấy doanh thu Sapo kỳ này</button>') + '</div>';
+  }
+  h += '<div class="kpis k6" style="margin-top:14px">' +
+    kpi('Chi phí quảng cáo', tr(t.cost), vnd(t.cost)) +
+    kpi('Doanh số từ QC', tr(t.gmv), 'Trực tiếp: ' + tr(t.gmv_direct)) +
+    kpi('ROAS', num1(t.roas), 'Trực tiếp: ' + num1(t.roas_direct)) +
+    kpi('TACOS', pctv(t.tacos), a.has_sales ? 'Tốt: ' + T.tacos_low + '–' + T.tacos_high + '%' + (t.unmapped ? ' · ' + t.unmapped + ' SP chưa gán' : '') : 'Cần doanh thu Sapo') +
+    kpi('CTR', pctv(t.ctr, 2), fmt(t.clicks) + ' click / ' + fmt(t.impressions) + ' xem') +
+    kpi('CR', pctv(t.cr, 2), fmt(t.conversions) + ' đơn từ QC') + '</div>';
+  // theo gian hang
+  h += '<h3 style="font-size:13px; font-weight:600; margin:18px 0 0">Theo gian hàng</h3><div class="wrap" style="margin-top:10px"><table class="tight"><thead><tr>' +
+    '<th>Gian hàng</th><th class="num">Chi phí QC</th><th class="num">Doanh số QC</th><th class="num">ROAS</th><th class="num">DT Sapo SP chạy QC</th>' +
+    '<th class="num">TACOS</th><th class="num" title="Chi phí QC / doanh thu Sapo cả gian">CP / DT cả gian</th><th class="num">CTR</th><th class="num">CR</th><th>Đánh giá</th><th></th></tr></thead><tbody>' +
+    a.shops.map(s => {
+      const id = s.shop + '|' + a.from + '|' + a.to;
+      return '<tr><td>' + esc(s.shop) + '<div class="small muted">' + esc(s.username) + ' · tải lên ' + esc(s.uploaded_at.slice(11)) + ' ' + dmy(s.uploaded_at.slice(0, 10)) + '</div>' +
+        (a.has_sales && !s.found_in_sapo ? '<div class="miss">Không thấy gian này trong đơn Sapo</div>' : '') + '</td>' +
+        '<td class="num">' + vnd(s.cost) + '</td><td class="num">' + vnd(s.gmv) + '</td><td class="num">' + num1(s.roas) + '</td>' +
+        '<td class="num">' + (s.sapo_revenue == null || !s.mapped_cost ? '–' : vnd(s.sapo_revenue)) + '</td><td class="num"><b>' + pctv(s.tacos) + '</b></td>' +
+        '<td class="num muted">' + pctv(s.cost_share, 2) + '</td><td class="num">' + pctv(s.ctr, 2) + '</td><td class="num">' + pctv(s.cr, 2) + '</td>' +
+        '<td class="flags">' + flags(s.flags) + '</td>' +
+        '<td><button class="link" data-del="' + esc(id) + '">' + (adsDel === id ? 'Bấm lần nữa để xoá' : 'Xoá file') + '</button></td></tr>';
+    }).join('') + '</tbody></table></div>';
+  // theo san pham
+  const shops = adsShop ? a.shops.filter(s => s.shop === adsShop) : a.shops;
+  h += '<div class="row" style="justify-content:space-between; margin:22px 0 0"><h3 style="font-size:13px; font-weight:600; margin:0">Theo sản phẩm chạy quảng cáo</h3>' +
+    '<select id="ads-shop"><option value="">Tất cả gian hàng</option>' + a.shops.map(s => '<option' + (s.shop === adsShop ? ' selected' : '') + '>' + esc(s.shop) + '</option>').join('') + '</select></div>' +
+    '<div class="wrap" style="margin-top:10px"><table class="tight"><thead><tr><th>Sản phẩm</th><th>SKU Sapo</th><th class="num">Lượt xem</th><th class="num">Click</th>' +
+    '<th class="num">CTR</th><th class="num">Đơn QC</th><th class="num">CR</th><th class="num">Chi phí</th><th class="num">Doanh số QC</th>' +
+    '<th class="num">ROAS</th><th class="num">DT Sapo</th><th class="num">TACOS</th></tr></thead><tbody>' +
+    shops.map(s => (a.shops.length > 1 && !adsShop ? '<tr class="sum"><td colspan="12">' + esc(s.shop) + '</td></tr>' : '') + s.products.map(p => {
+      const key = s.shop + '|' + p.item_id;
+      let map;
+      if (!p.item_id) map = '<span class="muted small">–</span>';
+      else if (adsEdit === key) map = '<input class="map-in" id="map-in" list="dl-skus" value="' + esc(p.skus.join(', ')) + '" placeholder="SKU, cách nhau dấu phẩy">' +
+        '<datalist id="dl-skus">' + s.sapo_skus.slice(0, 800).map(x => '<option value="' + esc(x.sku) + '">' + esc(x.name) + '</option>').join('') + '</datalist>' +
+        '<div class="row" style="margin-top:4px; gap:4px"><button class="primary sm" data-save="' + esc(p.item_id) + '">Lưu</button><button class="sm" data-cancel="1">Huỷ</button></div>';
+      else if (p.skus.length) map = '<span class="sku" style="color:var(--text2)">' + esc(p.skus.join(', ')) + '</span> <button class="link" data-edit="' + esc(key) + '">sửa</button>' +
+        (p.sapo_names ? '<div class="sapo-nm" title="' + esc(p.sapo_names.join(' | ')) + '">' + esc(p.sapo_names.join(' | ')) + '</div>' : '');
+      else map = '<span class="miss">Chưa gán</span> <button class="link" data-edit="' + esc(key) + '">gán</button>' +
+        (p.suggestions && p.suggestions.length ? '<div class="small muted" style="margin-top:3px">Gợi ý: ' + p.suggestions.map(g =>
+          '<button class="link" data-use="' + esc(p.item_id + '|' + g.sku) + '" title="' + esc(g.name) + '">' + esc(g.sku) + '</button>').join(' ') +
+          (p.suggestions.filter(g => g.score === p.suggestions[0].score).length > 1 ? ' <button class="link" data-use="' +
+            esc(p.item_id + '|' + p.suggestions.filter(g => g.score === p.suggestions[0].score).map(g => g.sku).join(',')) +
+            '" title="Các phân loại của cùng 1 sản phẩm">dùng cả ' + p.suggestions.filter(g => g.score === p.suggestions[0].score).length + '</button>' : '') + '</div>' : '');
+      return '<tr><td class="pname">' + esc(p.name) + '<div class="sku">' + (p.item_id ? 'Mã Shopee ' + esc(p.item_id) : '') +
+        (p.campaigns > 1 ? ' · ' + p.campaigns + ' chiến dịch' : '') + ' · ' + esc(p.status.join(', ')) + '</div><div class="fl">' + flags(p.flags) + '</div></td><td class="map">' + map + '</td>' +
+        '<td class="num">' + fmt(p.impressions) + '</td><td class="num">' + fmt(p.clicks) + '</td><td class="num">' + pctv(p.ctr, 2) + '</td>' +
+        '<td class="num">' + fmt(p.conversions) + '</td><td class="num">' + pctv(p.cr, 2) + '</td><td class="num">' + vnd(p.cost) + '</td>' +
+        '<td class="num">' + vnd(p.gmv) + '</td><td class="num">' + num1(p.roas) + '</td>' +
+        '<td class="num">' + (p.sapo_revenue == null ? '–' : vnd(p.sapo_revenue)) + '</td><td class="num"><b>' + pctv(p.tacos) + '</b></td></tr>';
+    }).join('')).join('') + '</tbody></table></div>';
+  h += '<p class="small muted" style="margin:14px 0 0">ROAS = doanh số từ QC / chi phí QC · TACOS = chi phí QC / doanh thu Sapo của SKU đã gán × 100 (tốt: ' +
+    T.tacos_low + '–' + T.tacos_high + '%) · CTR = click / lượt xem · CR = đơn từ QC / click. Cảnh báo khi ROAS &lt; ' + T.roas_min + ', CTR &lt; ' + T.ctr_min +
+    '%, CR &lt; ' + T.cr_min + '% hoặc tốn tiền mà chưa ra đơn. Doanh số QC theo Shopee (chưa trừ huỷ, hoàn); doanh thu Sapo đã trừ. ' +
+    'Gán SKU 1 lần, tool nhớ cho các kỳ sau; 1 sản phẩm Shopee có nhiều phân loại thì nhập nhiều SKU, cách nhau dấu phẩy.</p>';
+  $('#ads-body').innerHTML = h;
+  const inp = $('#map-in'); if (inp) inp.focus();
+}
+async function saveMap(item, skus) {
+  const r = await api('api/ads/map', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({item_id: item, skus})});
+  if (!r.data || !r.data.ok) { toast((r.data && r.data.error) || 'Không lưu được'); return; }
+  adsEdit = ''; loadAds();
+}
+$('#ads-body').addEventListener('click', async e => {
+  const b = e.target.closest('button'); if (!b) return;
+  if (b.id === 'ads-sales') { const [f, t] = adsPeriod.split('|'); $('#from').value = f; $('#to').value = t; await run(); setTimeout(renderAds, 300); }
+  else if (b.dataset.edit) { adsEdit = b.dataset.edit; renderAds(); }
+  else if (b.dataset.cancel) { adsEdit = ''; renderAds(); }
+  else if (b.dataset.save) saveMap(b.dataset.save, $('#map-in').value.split(',').map(x => x.trim()).filter(Boolean));
+  else if (b.dataset.use) { const [item, skus] = b.dataset.use.split('|'); saveMap(item, skus.split(',')); }
+  else if (b.dataset.del) {
+    if (adsDel !== b.dataset.del) { adsDel = b.dataset.del; renderAds(); setTimeout(() => { if (adsDel === b.dataset.del) { adsDel = ''; renderAds(); } }, 4000); return; }
+    const [shop, f, t] = adsDel.split('|'); adsDel = '';
+    await api('api/ads/delete', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({shop, from: f, to: t})});
+    adsPeriod = ''; loadAds();
+  }
+});
+$('#ads-body').addEventListener('keydown', e => {
+  if (e.target.id !== 'map-in') return;
+  if (e.key === 'Enter') { const b = $('#ads-body [data-save]'); if (b) b.click(); }
+  if (e.key === 'Escape') { adsEdit = ''; renderAds(); }
+});
+$('#ads-body').addEventListener('change', e => { if (e.target.id === 'ads-shop') { adsShop = e.target.value; renderAds(); } });
+
 load();
+loadAds();
 </script></body></html>

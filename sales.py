@@ -213,7 +213,9 @@ def get_report(start, end, progress=None, fresh=False):
 
 # ---------------------------------------------------------------- excel
 
-def to_xlsx(report):
+def to_xlsx(report, ads_analysis=None):
+    """ads_analysis: ket qua ads.analyze() cung ky (neu co) -> dien san cot quang cao + them sheet Quang cao Shopee."""
+    import ads
     from openpyxl import Workbook
     from openpyxl.chart import BarChart, PieChart, Reference
     from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
@@ -269,7 +271,13 @@ def to_xlsx(report):
     # ======== Tong Quan (theo file mau Report_Yu): bang gian hang + 3 cot de trong cho Yu, bieu do ben duoi
     ws = wb.active
     ws.title = "Tổng Quan"
-    rows = [[r["shop"], r["channel"], r["orders"], round(r["revenue"]), None, None, None] for r in report["shops"]]
+    ad_shops = ads.by_shop(ads_analysis) if ads_analysis and ads_analysis.get("has_sales") else {}
+
+    def ad_cols(r):
+        a = ad_shops.get(ads.norm(r["shop"])) if r["channel"] == "Shopee" else None
+        return [round(a["cost"]), round(a["gmv"]), round(a["conversions"])] if a else [None, None, None]
+
+    rows = [[r["shop"], r["channel"], r["orders"], round(r["revenue"])] + ad_cols(r) for r in report["shops"]]
     hr = sheet(ws, "Tổng doanh thu theo gian hàng Sàn",
                ["Gian hàng", "Kênh bán hàng", "Số lượng đơn hàng", vnd_h] + AD_COLUMNS,
                rows, [None, None, count, money, money, money, count], [27, 22, 18, 20, 20, 22, 16], yu_cols=3, top=2)
@@ -284,7 +292,8 @@ def to_xlsx(report):
         c.font, c.border = bold, box
         if f:
             c.number_format = f
-    ws.cell(total_row + 1, 1, "Các cột màu vàng để trống cho Yu điền số liệu quảng cáo.").font = Font(italic=True, color="A16207")
+    ws.cell(total_row + 1, 1, ("Các cột màu vàng lấy từ file Quảng cáo Shopee đã tải lên (cùng kỳ); gian chưa có file để trống cho Yu điền."
+                                    if ad_shops else "Các cột màu vàng để trống cho Yu điền số liệu quảng cáo.")).font = Font(italic=True, color="A16207")
     chart_row = total_row + 3
     ws.cell(chart_row, 2, "BIỂU ĐỒ").font = bold
     shops = [r for r in report["shops"] if r["revenue"] > 0]
@@ -331,6 +340,10 @@ def to_xlsx(report):
         chart.series[0].graphicalProperties.solidFill = "3F3F46"
         chart.height, chart.width = max(12, 0.75 * len(report["shops"]) + 3), 22
         ws.add_chart(chart, f"I{chart_row + 1}")
+
+    # ======== Quang cao Shopee (tu file Shopee Ads da tai len, cung ky)
+    if ad_shops:
+        ads_sheet(wb.create_sheet("Quảng cáo Shopee", 1), ads_analysis, sheet, period)
 
     # ======== Moi gian hang 1 sheet (theo sheet "Ulanzi HN" cua file mau)
     tops = {(m["channel"], m["shop"], m["month"]): m["top"] for m in report.get("monthly_top", [])}
@@ -433,6 +446,37 @@ def to_xlsx(report):
     buf = io.BytesIO()
     wb.save(buf)
     return fix_core_dates(buf.getvalue())
+
+
+def ads_sheet(ws, a, sheet, period):
+    """Sheet Quang cao Shopee: moi dong 1 san pham chay QC, kem dong tong tung gian."""
+    from openpyxl.styles import Font, PatternFill
+    T = a["thresholds"]
+    pct = lambda v: None if v is None else v / 100
+    rows, shop_rows = [], []
+    for s in a["shops"]:
+        shop_rows.append(len(rows))
+        rows.append([s["shop"], "TỔNG GIAN", "", s["impressions"], s["clicks"], pct(s["ctr"]), s["conversions"], pct(s["cr"]),
+                     round(s["cost"]), round(s["gmv"]), s["roas"], round(s.get("sapo_revenue") or 0), pct(s.get("tacos")),
+                     "; ".join(f["text"] for f in s["flags"])])
+        for p in s["products"]:
+            rows.append([s["shop"], p["name"], ", ".join(p["skus"]), p["impressions"], p["clicks"], pct(p["ctr"]), p["conversions"],
+                         pct(p["cr"]), round(p["cost"]), round(p["gmv"]), p["roas"],
+                         None if p.get("sapo_revenue") is None else round(p["sapo_revenue"]), pct(p.get("tacos")),
+                         "; ".join(f["text"] for f in p["flags"])])
+    hr = sheet(ws, "Hiệu quả quảng cáo Shopee (theo file Shopee Ads + doanh thu Sapo)",
+               ["Gian hàng", "Sản phẩm chạy quảng cáo", "SKU Sapo", "Lượt xem", "Lượt click", "CTR", "Đơn từ QC", "CR",
+                "Chi phí QC (đ)", "Doanh số từ QC (đ)", "ROAS", "Doanh thu Sapo SP chạy QC (đ)", "TACOS", "Đánh giá tự động"],
+               rows, [None, None, None, "#,##0", "#,##0", "0.00%", "#,##0", "0.00%", "#,##0", "#,##0", "0.0", "#,##0", "0.0%", None],
+               [22, 50, 14, 11, 10, 8, 10, 8, 14, 16, 7, 18, 8, 70])
+    bold, fill = Font(bold=True), PatternFill("solid", fgColor="F4F4F5")
+    for k in shop_rows:
+        for c in ws[hr + 1 + k]:
+            c.font, c.fill = bold, fill
+    ws.cell(hr + len(rows) + 2, 1, f"ROAS = doanh số QC / chi phí. TACOS = chi phí QC / doanh thu Sapo của SKU đã gán × 100 "
+            f"(tốt: {T['tacos_low']:g}–{T['tacos_high']:g}%). CTR = click / lượt xem. CR = đơn từ QC / click. "
+            "Doanh số QC lấy theo Shopee (chưa trừ huỷ, hoàn); doanh thu Sapo đã trừ.").font = Font(italic=True, color="71717A")
+    ws.auto_filter.ref = f"A{hr}:N{hr + len(rows)}"
 
 
 def fix_core_dates(data):
