@@ -323,7 +323,8 @@ class Handler(BaseHTTPRequestHandler):
             if not (start and end) and plist:
                 start, end = plist[0]["from"], plist[0]["to"]
             report = None if sales_job.running else sales_job.report
-            self.send_json({"periods": plist, "thresholds": ads.THRESHOLDS,
+            self.send_json({"periods": plist, "thresholds": ads.THRESHOLDS, "kinds": ads.KINDS,
+                            "saleman_map": ads.salesmen(), "salesmen": sorted(set(ads.SALESMEN) | set(ads.salesmen().values())),
                             "analysis": ads.analyze(start, end, report) if start and end else None})
         elif path == "/api/sales.xlsx":
             r = sales_job.report
@@ -382,9 +383,10 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json({"ok": False, "error": f"{body.get('name', 'File')}: {e}"}, 400)
                 return
             replaced = ads.add_upload(parsed)
-            sync.log.info("Quảng cáo Shopee: tải lên %s (%s → %s, %s chiến dịch)%s", parsed["shop"], parsed["from"],
-                          parsed["to"], len(parsed["campaigns"]), " - thay bản cũ" if replaced else "")
-            self.send_json({"ok": True, "shop": parsed["shop"], "from": parsed["from"], "to": parsed["to"],
+            sync.log.info("%s: tải lên %s (%s → %s, %s chiến dịch)%s", ads.KINDS[parsed["kind"]], parsed["shop"],
+                          parsed["from"], parsed["to"], len(parsed["campaigns"]), " - thay bản cũ" if replaced else "")
+            self.send_json({"ok": True, "shop": parsed["shop"], "kind": parsed["kind"], "kind_label": ads.KINDS[parsed["kind"]],
+                            "from": parsed["from"], "to": parsed["to"],
                             "campaigns": len(parsed["campaigns"]), "replaced": replaced})
         elif path == "/api/ads/map":
             item, skus = str(body.get("item_id", "")), body.get("skus") or []
@@ -394,8 +396,17 @@ class Handler(BaseHTTPRequestHandler):
             ads.set_map(item, [str(x) for x in skus])
             self.send_json({"ok": True})
         elif path == "/api/ads/delete":
-            ok = ads.delete_upload(str(body.get("shop", "")), str(body.get("from", "")), str(body.get("to", "")))
+            kind = body.get("kind") if body.get("kind") in ads.KINDS else None
+            ok = ads.delete_upload(str(body.get("shop", "")), str(body.get("from", "")), str(body.get("to", "")), kind)
             self.send_json({"ok": ok}, 200 if ok else 404)
+        elif path == "/api/saleman":
+            shop, name = str(body.get("shop", "")).strip(), str(body.get("name", "")).strip()
+            if not shop or len(name) > 60:
+                self.send_json({"ok": False, "error": "Dữ liệu không hợp lệ"}, 400)
+                return
+            ads.set_salesman(shop, name)
+            sync.log.info("Saleman: %s → %s", shop, name or "(bỏ trống)")
+            self.send_json({"ok": True})
         elif path == "/api/settings":
             site = self.site()
             minutes = max(float(body.get("minutes", state.settings["minutes"])), 5)

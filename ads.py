@@ -7,6 +7,8 @@ Theo file yeu cau "BAO_CAO_SHOPEE_DEMO_AI":
 - Nhom 4: danh gia tu dong theo nguong (THRESHOLDS).
 
 Moi file Shopee = 1 gian hang, 1 khoang thoi gian (tong ca ky, khong chia theo ngay), moi dong 1 chien dich.
+2 loai file: "product" = Dich vu Hien thi San pham (co cot Ma san pham), "shop" = Dich vu Hien thi Shop (khong co).
+QC Shop khong gan voi san pham nao -> TACOS cua QC Shop = chi phi / doanh thu Sapo ca gian.
 San pham Shopee (Ma san pham) khac SKU Sapo -> bang gan reports/ads/map.json (gan 1 lan, nho mai).
 """
 import csv
@@ -23,15 +25,18 @@ import sync
 ADS_DIR = os.path.join(sync.REPORT_DIR, "ads")
 UPLOADS_FILE = os.path.join(ADS_DIR, "uploads.json")
 MAP_FILE = os.path.join(ADS_DIR, "map.json")
+SALESMAN_FILE = os.path.join(sync.REPORT_DIR, "saleman.json")  # {ten gian: saleman}
+SALESMEN = ["Evelyn", "Boni", "Ivy"]  # danh sach goi y (theo file yeu cau)
+KINDS = {"product": "Quảng cáo Sản phẩm", "shop": "Quảng cáo Shop"}
 _lock = threading.Lock()
 
-# Nguong danh gia. TACOS 8-12% = tot (theo file yeu cau); cac nguong con lai la mac dinh, sua o day neu can.
+# Nguong danh gia theo tra loi cua Yu (24/11/2026): TACOS 8-12% tot, ROAS < 8, CTR < 6%, CR < 3%, ton tien 0 don -> dung.
 THRESHOLDS = {
     "tacos_low": 8.0,     # TACOS duoi muc nay: hieu qua cao, con du dia tang ngan sach
     "tacos_high": 12.0,   # TACOS tren muc nay: chi phi QC cao so voi doanh thu
     "roas_min": 8.0,      # ROAS duoi muc nay: kem (ROAS 8 ~ ACOS 12.5%)
-    "ctr_min": 1.0,       # %: it nguoi bam -> xem lai anh bia / tieu de / gia
-    "cr_min": 2.0,        # %: nhieu click it mua -> xem lai gia / mo ta / danh gia
+    "ctr_min": 6.0,       # %: it nguoi bam -> xem lai anh / tieu de
+    "cr_min": 3.0,        # %: nhieu click it mua -> xem lai gia / mo ta
     "min_clicks": 100,    # chi danh gia CR / "chua ra don" khi du so click
     "min_impressions": 1000,  # chi danh gia CTR khi du luot xem
 }
@@ -81,6 +86,7 @@ def parse_csv(text):
     missing = [c for c in REQUIRED if c not in (reader.fieldnames or [])]
     if missing:
         raise ValueError("File thiếu cột: " + ", ".join(missing))
+    kind = "product" if "Mã sản phẩm" in reader.fieldnames else "shop"
     campaigns = []
     for r in reader:
         if not (r.get("Thứ tự") or "").strip():
@@ -88,9 +94,9 @@ def parse_csv(text):
         c = {f: _num(r.get(col)) for col, f in COLUMNS.items()}
         c.update(name=(r.get("Tên Dịch vụ Hiển thị") or "").strip(), status=(r.get("Trạng thái") or "").strip(),
                  type=(r.get("Loại Dịch vụ Hiển thị") or "").strip(), bidding=(r.get("Phương thức đấu thầu") or "").strip(),
-                 item_id=re.sub(r"\D", "", r.get("Mã sản phẩm") or ""))
+                 item_id=re.sub(r"\D", "", r.get("Mã sản phẩm") or ""), keyword=(r.get("Từ khóa") or "").strip())
         campaigns.append(c)
-    return {"shop": shop, "username": meta.get("Tên đăng nhập", ""), "seller_id": meta.get("Mã Người bán", ""),
+    return {"shop": shop, "kind": kind, "title": lines[0].strip() if lines else "", "username": meta.get("Tên đăng nhập", ""), "seller_id": meta.get("Mã Người bán", ""),
             "from": _day(m.group(1)), "to": _day(m.group(2)), "created": meta.get("Thời gian tạo báo cáo", ""),
             "uploaded_at": datetime.now().strftime("%Y-%m-%d %H:%M"), "campaigns": campaigns}
 
@@ -114,7 +120,10 @@ def _save(path, data):
 
 
 def uploads():
-    return _load(UPLOADS_FILE, [])
+    items = _load(UPLOADS_FILE, [])
+    for u in items:
+        u.setdefault("kind", "product")  # file tai len truoc khi co phan loai
+    return items
 
 
 def get_map():
@@ -122,20 +131,22 @@ def get_map():
 
 
 def add_upload(parsed):
-    """Luu file da doc; cung gian + cung ky thi thay ban cu. Tra ve True neu la thay the."""
+    """Luu file da doc; cung gian + cung ky + cung loai (SP/Shop) thi thay ban cu. Tra ve True neu la thay the."""
     with _lock:
         items = uploads()
-        same = lambda u: _norm(u["shop"]) == _norm(parsed["shop"]) and (u["from"], u["to"]) == (parsed["from"], parsed["to"])
+        same = lambda u: (_norm(u["shop"]) == _norm(parsed["shop"]) and (u["from"], u["to"]) == (parsed["from"], parsed["to"])
+                          and u["kind"] == parsed["kind"])
         replaced = any(same(u) for u in items)
         items = [u for u in items if not same(u)] + [parsed]
         _save(UPLOADS_FILE, items)
         return replaced
 
 
-def delete_upload(shop, start, end):
+def delete_upload(shop, start, end, kind=None):
+    """Xoa file cua 1 gian trong 1 ky (kind=None: ca 2 loai)."""
     with _lock:
         items = uploads()
-        keep = [u for u in items if not (u["shop"] == shop and u["from"] == start and u["to"] == end)]
+        keep = [u for u in items if not (u["shop"] == shop and u["from"] == start and u["to"] == end and kind in (None, u["kind"]))]
         _save(UPLOADS_FILE, keep)
         return len(keep) != len(items)
 
@@ -156,8 +167,35 @@ def periods():
     """Cac ky da tai len: [{from, to, shops: [...]}], moi nhat truoc."""
     out = {}
     for u in uploads():
-        out.setdefault((u["from"], u["to"]), []).append(u["shop"])
+        out.setdefault((u["from"], u["to"]), set()).add(u["shop"])
     return [{"from": f, "to": t, "shops": sorted(s)} for (f, t), s in sorted(out.items(), key=lambda kv: kv[0][::-1], reverse=True)]
+
+
+def salesmen():
+    return _load(SALESMAN_FILE, {})
+
+
+def set_salesman(shop, name):
+    shop, name = str(shop).strip(), str(name or "").strip()
+    with _lock:
+        mp = salesmen()
+        if name:
+            mp[shop] = name
+        else:
+            mp.pop(shop, None)
+        os.makedirs(os.path.dirname(SALESMAN_FILE), exist_ok=True)
+        tmp = SALESMAN_FILE + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(mp, f, ensure_ascii=False)
+        os.replace(tmp, SALESMAN_FILE)
+
+
+def salesman_of(shop, mp=None):
+    mp = salesmen() if mp is None else mp
+    if shop in mp:
+        return mp[shop]
+    key = _norm(shop)
+    return next((v for k, v in mp.items() if _norm(k) == key), "")
 
 
 # ---------------------------------------------------------------- tinh toan
@@ -234,7 +272,7 @@ def evaluate(m):
     if cost <= 0:
         return [{"level": "info", "text": "Không phát sinh chi phí trong kỳ"}]
     if m["conversions"] == 0 and m["clicks"] >= T["min_clicks"]:
-        out.append({"level": "bad", "text": f"Tốn {vnd(cost)} nhưng chưa ra đơn → nên tạm dừng hoặc đổi ảnh, giá"})
+        out.append({"level": "bad", "text": f"Tốn {vnd(cost)} nhưng chưa ra đơn → nên dừng chiến dịch"})
     if tacos is not None:
         if tacos > T["tacos_high"]:
             out.append({"level": "bad", "text": f"TACOS {vn(tacos, 1)}% > {vn(T['tacos_high'], 0)}%: chi phí QC cao so với doanh thu → giảm giá thầu / ngân sách"})
@@ -249,9 +287,9 @@ def evaluate(m):
     if roas is not None and roas < T["roas_min"] and m["conversions"] > 0:
         out.append({"level": "warn", "text": f"ROAS {vn(roas, 1)} < {vn(T['roas_min'], 0)}: doanh số QC thấp so với chi phí"})
     if m.get("ctr") is not None and m["impressions"] >= T["min_impressions"] and m["ctr"] < T["ctr_min"]:
-        out.append({"level": "warn", "text": f"CTR {vn(m['ctr'], 2)}% < {vn(T['ctr_min'], 0)}%: ít người bấm → xem lại ảnh bìa, tiêu đề, giá"})
+        out.append({"level": "warn", "text": f"CTR {vn(m['ctr'], 2)}% < {vn(T['ctr_min'], 0)}%: ít người bấm → xem lại ảnh, tiêu đề"})
     if m.get("cr") is not None and m["clicks"] >= T["min_clicks"] and 0 < m["cr"] < T["cr_min"]:
-        out.append({"level": "warn", "text": f"CR {vn(m['cr'], 2)}% < {vn(T['cr_min'], 0)}%: nhiều click ít mua → xem lại giá, mô tả, đánh giá"})
+        out.append({"level": "warn", "text": f"CR {vn(m['cr'], 2)}% < {vn(T['cr_min'], 0)}%: nhiều click ít mua → xem lại giá, mô tả"})
     return out
 
 
@@ -264,10 +302,25 @@ def _add(dst, src):
         dst[f] += src.get(f, 0.0)
 
 
+def _group_items(campaigns):
+    """Gop cac chien dich cung 1 san pham."""
+    items = {}
+    for c in campaigns:
+        k = c["item_id"] or ("chien-dich:" + c["name"])
+        it = items.get(k)
+        if it is None:
+            it = items[k] = _blank() | {"item_id": c["item_id"], "name": c["name"], "status": [], "campaigns": 0}
+        _add(it, c)
+        it["campaigns"] += 1
+        if c["status"] and c["status"] not in it["status"]:
+            it["status"].append(c["status"])
+    return list(items.values())
+
+
 def analyze(start, end, report=None):
     """Phan tich ky [start, end]. report = bao cao doanh thu Sapo (sales.get_report); chi dung neu dung cung ky."""
     has_sales = bool(report and report.get("from") == start and report.get("to") == end)
-    mp = get_map()
+    mp, sm = get_map(), salesmen()
     sapo_shops, sapo_products = {}, {}
     if has_sales:
         for r in report["shops"]:
@@ -276,54 +329,66 @@ def analyze(start, end, report=None):
         for p in report["products"]:
             if p["channel"] == "Shopee":
                 sapo_products.setdefault(_norm(p["shop"]), []).append(p)
+    by_shop_files = {}
+    for u in uploads():
+        if (u["from"], u["to"]) == (start, end):
+            by_shop_files.setdefault(_norm(u["shop"]), []).append(u)
     shops, total = [], _blank()
     total_rev = total_shop_rev = 0.0
     unmapped_total = 0
-    for u in sorted((u for u in uploads() if (u["from"], u["to"]) == (start, end)), key=lambda u: u["shop"]):
-        key = _norm(u["shop"])
+    for key, files in by_shop_files.items():
         sapo_shop = sapo_shops.get(key)
+        shop_rev = sapo_shop["revenue"] if sapo_shop else None
         prods = sapo_products.get(key, [])
         by_sku = {}
         for p in prods:
             by_sku.setdefault(p["sku"].upper(), []).append(p)
-        # gop cac chien dich cung 1 san pham
-        items = {}
-        for c in u["campaigns"]:
-            k = c["item_id"] or ("chien-dich:" + c["name"])
-            it = items.get(k)
-            if it is None:
-                it = items[k] = _blank() | {"item_id": c["item_id"], "name": c["name"], "status": [], "campaigns": 0}
-            _add(it, c)
-            it["campaigns"] += 1
-            if c["status"] and c["status"] not in it["status"]:
-                it["status"].append(c["status"])
-        shop_m = _blank()
-        shop_mapped_rev = 0.0
-        rows = []
-        for it in items.values():
-            skus = mp.get(it["item_id"], []) if it["item_id"] else []
-            sapo_rev = None
-            if has_sales and skus:
-                matched = [p for s in skus for p in by_sku.get(s.upper(), [])]
-                sapo_rev = sum(p["revenue"] for p in matched)
-                it["sapo_qty"] = sum(p["qty"] for p in matched)
-                it["sapo_names"] = sorted({p["name"] for p in matched})
-                it["mapped_cost"] = it["cost"]
-                shop_mapped_rev += sapo_rev
-            it["skus"] = skus
-            it["unmapped"] = bool(it["item_id"]) and not skus and it["cost"] > 0
-            if it["unmapped"]:
-                unmapped_total += 1
-                if has_sales:
-                    it["suggestions"] = suggest(it["name"], prods)
-            _add(shop_m, it)
-            rows.append(_metrics(it, sapo_rev if has_sales and skus else None))
+        shop_m, shop_mapped_rev, rows, shop_ads = _blank(), 0.0, [], None
+        for u in files:
+            if u["kind"] == "shop":
+                # QC Shop: cong tat ca chien dich thanh 1 dong; TACOS = chi phi / doanh thu ca gian
+                shop_ads = _blank() | {"campaigns": [c["name"] for c in u["campaigns"]]}
+                for c in u["campaigns"]:
+                    _add(shop_ads, c)
+                shop_ads["mapped_cost"] = shop_ads["cost"]
+                _metrics(shop_ads, shop_rev if has_sales and shop_rev else None)
+                shop_ads["uploaded_at"] = u["uploaded_at"]
+                for f in SUM_FIELDS:  # cong vao tong gian, KHONG cong vao TACOS (chi tinh QC San pham)
+                    shop_m[f] += shop_ads[f]
+                continue
+            for it in _group_items(u["campaigns"]):
+                skus = mp.get(it["item_id"], []) if it["item_id"] else []
+                sapo_rev = None
+                if has_sales and skus:
+                    matched = [p for sk in skus for p in by_sku.get(sk.upper(), [])]
+                    sapo_rev = sum(p["revenue"] for p in matched)
+                    it["sapo_qty"] = sum(p["qty"] for p in matched)
+                    it["sapo_names"] = sorted({p["name"] for p in matched})
+                    it["mapped_cost"] = it["cost"]
+                    shop_mapped_rev += sapo_rev
+                it["skus"] = skus
+                it["unmapped"] = bool(it["item_id"]) and not skus and it["cost"] > 0
+                if it["unmapped"]:
+                    unmapped_total += 1
+                    if has_sales:
+                        it["suggestions"] = suggest(it["name"], prods)
+                _add(shop_m, it)
+                rows.append(_metrics(it, sapo_rev if has_sales and skus else None))
         rows.sort(key=lambda r: -r["cost"])
-        shop_rev = sapo_shop["revenue"] if sapo_shop else None
-        shop_m.update(shop=u["shop"], username=u["username"], created=u["created"], uploaded_at=u["uploaded_at"],
-                      found_in_sapo=bool(sapo_shop), products=rows,
+        product_ads = None
+        if any(u["kind"] == "product" for u in files):
+            product_ads = _blank()
+            for it in rows:
+                _add(product_ads, it)
+            product_ads["unmapped"] = sum(1 for r in rows if r["unmapped"])
+            _metrics(product_ads, shop_mapped_rev if has_sales else None, shop_rev if has_sales else None)
+        first = files[0]
+        shop_m.update(shop=first["shop"], saleman=salesman_of(first["shop"], sm), username=first["username"],
+                      kinds=sorted({u["kind"] for u in files}), uploaded_at=max(u["uploaded_at"] for u in files),
+                      found_in_sapo=bool(sapo_shop), products=rows, shop_ads=shop_ads, product_ads=product_ads,
                       unmapped=sum(1 for r in rows if r["unmapped"]),
                       sapo_skus=[{"sku": p["sku"], "name": p["name"]} for p in sorted(prods, key=lambda p: -p["revenue"])])
+        # TACOS cua gian = chi QC San pham (chi phi SP da gan / doanh thu Sapo cac SP do) - cong thuc Yu chon
         _metrics(shop_m, shop_mapped_rev if has_sales else None, shop_rev if has_sales else None)
         shops.append(shop_m)
         _add(total, shop_m)
@@ -332,7 +397,8 @@ def analyze(start, end, report=None):
     total["unmapped"] = unmapped_total
     _metrics(total, total_rev if has_sales else None, total_shop_rev if has_sales else None)
     shops.sort(key=lambda s: -s["cost"])
-    return {"from": start, "to": end, "has_sales": has_sales, "thresholds": THRESHOLDS, "total": total, "shops": shops}
+    return {"from": start, "to": end, "has_sales": has_sales, "thresholds": THRESHOLDS, "total": total, "shops": shops,
+            "kinds": KINDS, "salesmen": sorted(set(SALESMEN) | set(sm.values()))}
 
 
 def by_shop(analysis):
