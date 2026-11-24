@@ -314,11 +314,11 @@ input.sm-in { width:96px; }
             <li>Quảng cáo <b>Sản phẩm</b> (Dịch vụ Hiển thị Sản phẩm) – file có cột "Mã sản phẩm".</li>
             <li>Quảng cáo <b>Shop</b> (Dịch vụ Hiển thị Shop) – nên dùng bản <b>theo từ khóa</b> (Keyword Level) để xem được từng từ khóa.</li>
           </ul></li>
-        <li><b>Tải file lên:</b> vào tab <span class="kbd">Quảng cáo Shopee</span>, bấm <b>＋ Tải file Quảng cáo Shopee</b> hoặc kéo thả, chọn được nhiều file cùng lúc. Tool tự nhận gian hàng, loại quảng cáo và kỳ trong file.</li>
+        <li><b>Tải file lên:</b> vào tab <span class="kbd">Quảng cáo Shopee</span>, bấm <b>＋ Tải file Quảng cáo Shopee</b> hoặc kéo thả, chọn được nhiều file cùng lúc. Tool tự nhận gian hàng, loại quảng cáo và kỳ trong file, rồi <b>tự lấy doanh thu Sapo đúng kỳ đó</b> (không cần bấm gì thêm, đợi 1–2 phút).</li>
         <li><b>Gán SKU</b> cho sản phẩm mới chạy quảng cáo (chỉ làm 1 lần cho mỗi sản phẩm, xem mục bên dưới).</li>
         <li><b>Xem đánh giá</b> trên tab Quảng cáo, rồi bấm <span class="kbd">Tải Excel</span> để lưu / gửi báo cáo.</li>
       </ol>
-      <p class="tipbox">💡 Kỳ của file Shopee phải <b>trùng đúng</b> kỳ doanh thu Sapo đang xem thì mới tính được TACOS. Nếu lệch, tab Quảng cáo sẽ hiện nút <b>"Lấy doanh thu Sapo kỳ này"</b> – bấm là xong.</p>
+      <p class="tipbox">💡 Không cần lấy doanh thu trước: tải file Shopee lên là tool tự đọc ngày trong file và tự lấy doanh thu Sapo cùng kỳ. Chọn kỳ khác ở ô <b>Kỳ …</b> trong tab Quảng cáo cũng tự lấy. Nếu Sapo lỗi mạng, bấm nút <b>"Lấy doanh thu Sapo kỳ này"</b> để thử lại. Lưu ý: mỗi lúc chỉ xem 1 kỳ, nên tab Tổng quan / Sản phẩm và file Excel cũng chuyển theo kỳ đó.</p>
 
       <h3>Gán Saleman cho gian hàng</h3>
       <p>Tab <span class="kbd">Tổng quan gian hàng</span> → cột <b>Saleman</b>: chọn Evelyn / Boni / Ivy hoặc gõ tên khác, tự lưu. Chỉ cần làm 1 lần, tên saleman hiện trong bảng Quảng cáo và file Excel.</p>
@@ -354,7 +354,7 @@ input.sm-in { width:96px; }
 
       <h3>Câu hỏi thường gặp</h3>
       <dl class="faq">
-        <dt>TACOS hiện "–"?</dt><dd>Chưa có doanh thu Sapo cùng kỳ với file QC (bấm "Lấy doanh thu Sapo kỳ này"), hoặc sản phẩm chưa gán SKU.</dd>
+        <dt>TACOS hiện "–"?</dt><dd>Đang tự lấy doanh thu Sapo (đợi 1–2 phút), Sapo bị lỗi (bấm "Lấy doanh thu Sapo kỳ này" để thử lại), hoặc sản phẩm chưa gán SKU.</dd>
         <dt>Tải lại file của cùng gian, cùng tuần thì sao?</dt><dd>File mới thay file cũ (theo từng loại Sản phẩm / Shop), không bị cộng 2 lần. File QC Shop bản chiến dịch và bản từ khóa là cùng số tiền, chỉ cần 1 trong 2.</dd>
         <dt>Tải nhầm file?</dt><dd>Bấm <b>Xoá file</b> ở dòng gian hàng trong bảng Quảng cáo (bấm 2 lần để xác nhận).</dd>
         <dt>Doanh số từ QC (Shopee) lớn hơn doanh thu Sapo?</dt><dd>Bình thường: số Shopee chưa trừ đơn huỷ, hoàn, voucher; doanh thu Sapo đã trừ.</dd>
@@ -367,7 +367,7 @@ input.sm-in { width:96px; }
   <section data-pane="ads">
     <div class="card" id="ads-card">
       <div class="card-h">
-        <div><h2>Quảng cáo Shopee</h2><p>Tải file .csv xuất từ Quảng cáo Shopee (Sản phẩm hoặc Shop, mỗi file 1 gian) · cần doanh thu Sapo <b>cùng kỳ</b> với file để tính TACOS</p></div>
+        <div><h2>Quảng cáo Shopee</h2><p>Tải file .csv xuất từ Quảng cáo Shopee (Sản phẩm hoặc Shop, mỗi file 1 gian) · tool tự đọc ngày trong file và tự lấy doanh thu Sapo cùng kỳ để tính TACOS</p></div>
         <select id="ads-period" title="Chọn kỳ quảng cáo đã tải lên" style="display:none"></select>
       </div>
       <label class="drop" id="ads-drop"><input type="file" id="ads-file" accept=".csv,text/csv" multiple hidden>
@@ -683,6 +683,17 @@ async function loadAds(syncSales) {
   renderAds();
   renderShops();
 }
+/* Tu dong: ky QC dang xem khac ky doanh thu Sapo -> tu dien ngay va lay doanh thu Sapo dung ky do */
+async function autoSales(period, why) {
+  if (!period) return;
+  const [f, t] = period.split('|');
+  if (data && data.from === f && data.to === t) return;   // da co dung ky
+  if ($('#run').disabled) { toast('Đang lấy dữ liệu Sapo, đợi xong rồi chọn lại kỳ quảng cáo'); return; }
+  $('#from').value = f; $('#to').value = t;
+  toast((why || 'Tự lấy doanh thu Sapo') + ' kỳ ' + dmy(f) + ' – ' + dmy(t) + '…');
+  await run();
+  if (adsData) renderAds();
+}
 async function uploadAds(files) {
   files = [...files].filter(f => /\.csv$/i.test(f.name));
   if (!files.length) { toast('Chỉ nhận file .csv xuất từ Quảng cáo Shopee'); return; }
@@ -697,14 +708,16 @@ async function uploadAds(files) {
   }
   $('#ads-msg').innerHTML = out.join('<br>');
   $('#ads-file').value = '';
-  loadAds();
+  await loadAds();
+  // file vua tai co ky khac ky doanh thu dang xem -> tu lay doanh thu Sapo ky cua file (khong can bam nut)
+  if (adsPeriod) autoSales(adsPeriod, 'Đã đọc ngày trong file, tự lấy doanh thu Sapo');
 }
 $('#ads-file').onchange = e => uploadAds(e.target.files);
 const drop = $('#ads-drop');
 ['dragenter', 'dragover'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('on'); }));
 ['dragleave', 'drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('on'); }));
 drop.addEventListener('drop', e => uploadAds(e.dataTransfer.files));
-$('#ads-period').onchange = e => { adsPeriod = e.target.value; adsShop = ''; adsEdit = ''; loadAds(); };
+$('#ads-period').onchange = async e => { adsPeriod = e.target.value; adsShop = ''; adsEdit = ''; await loadAds(); autoSales(adsPeriod, 'Tự lấy doanh thu Sapo'); };
 
 function renderAds() {
   const r = adsData, a = r.analysis, sel = $('#ads-period');
@@ -717,9 +730,10 @@ function renderAds() {
   const t = a.total, T = a.thresholds, running = $('#run').disabled;
   let h = '';
   if (!a.has_sales) {
-    h += '<div class="notice">Để tính <b>TACOS</b>, gợi ý SKU và ghép với bảng doanh thu, cần doanh thu Sapo <b>cùng kỳ ' + dmy(a.from) + ' – ' + dmy(a.to) + '</b>.' +
-      (running ? '<span class="row"><span class="spinner"></span>Đang lấy dữ liệu Sapo...</span>'
-               : '<button class="primary sm" id="ads-sales">Lấy doanh thu Sapo kỳ này</button>') + '</div>';
+    h += running
+      ? '<div class="notice"><span class="spinner"></span>Đang tự lấy doanh thu Sapo <b>kỳ ' + dmy(a.from) + ' – ' + dmy(a.to) + '</b> (theo ngày trong file) để tính TACOS… khoảng 1–2 phút.</div>'
+      : '<div class="notice">Chưa có doanh thu Sapo <b>kỳ ' + dmy(a.from) + ' – ' + dmy(a.to) + '</b> để tính TACOS.' +
+        '<button class="primary sm" id="ads-sales">Lấy doanh thu Sapo kỳ này</button></div>';
   }
   if (a.has_sales && t.unmapped) {
     h += '<div class="notice">⚠ <b>' + t.unmapped + ' sản phẩm</b> chạy quảng cáo chưa gán SKU Sapo → chưa tính được TACOS của các sản phẩm này.' +
@@ -815,7 +829,7 @@ async function saveMap(item, skus) {
 }
 $('#ads-body').addEventListener('click', async e => {
   const b = e.target.closest('button'); if (!b) return;
-  if (b.id === 'ads-sales') { const [f, t] = adsPeriod.split('|'); $('#from').value = f; $('#to').value = t; await run(); setTimeout(renderAds, 300); }
+  if (b.id === 'ads-sales') { const [f, t] = adsPeriod.split('|'); $('#from').value = f; $('#to').value = t; await run(); setTimeout(renderAds, 300); }  // du phong khi tu dong loi
   else if (b.dataset.shopview) { adsShop = b.dataset.shopview; renderAds(); const x = $('#ads-shop'); if (x) x.scrollIntoView({behavior: 'smooth', block: 'start'}); }
   else if (b.id === 'ads-unmapped') { adsOnlyUnmapped = !adsOnlyUnmapped; renderAds(); const x = $('#ads-shop'); if (x && adsOnlyUnmapped) x.scrollIntoView({behavior: 'smooth', block: 'start'}); }
   else if (b.dataset.kw) { adsKw = adsKw === b.dataset.kw ? '' : b.dataset.kw; renderAds(); }
