@@ -408,8 +408,9 @@ def tracker_sheet(ws, report, ad_shops, sheet):
                f"{best['name']} ({vn(best['qty'])} cái)" if best else None, brands or None, len(r.get("top_qty", []))]
         if a:
             sa = a.get("shop_ads") or {}
-            row += [round(a["cost"] - sa.get("cost", 0)), round(sa.get("cost", 0)) if sa else None, round(a["cost"]),
-                    round(a["gmv"]), a["roas"], round(a.get("sapo_revenue") or 0), pct(a.get("tacos")), round(r["revenue"]),
+            has_sp = bool(a.get("product_ads"))  # chua tai file QC San pham -> de trong, khong ghi 0
+            row += [round(a["cost"] - sa.get("cost", 0)) if has_sp else None, round(sa.get("cost", 0)) if sa else None, round(a["cost"]),
+                    round(a["gmv"]), a["roas"], round(a.get("sapo_revenue") or 0) if has_sp else None, pct(a.get("tacos")), round(r["revenue"]),
                     a["impressions"], a["clicks"], pct(a["ctr"]), a["conversions"], pct(a["cr"]),
                     "; ".join(f["text"] for f in a["flags"] + [dict(f, text="QC Shop: " + f["text"]) for f in sa.get("flags", [])])]
         else:
