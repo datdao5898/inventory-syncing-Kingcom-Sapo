@@ -134,9 +134,23 @@ td.num, th.num { text-align:right; white-space:nowrap; font-variant-numeric:tabu
 .tabs button.on { color:var(--text); border-bottom-color:var(--ink); font-weight:600; }
 .tabs .dot { width:7px; height:7px; border-radius:50%; background:var(--bad); display:inline-block; margin-left:6px; vertical-align:2px; }
 [data-pane] { display:none; }
-body[data-tab="overview"] [data-pane="overview"], body[data-tab="products"] [data-pane="products"], body[data-tab="ads"] [data-pane="ads"] { display:block; }
+body[data-tab="overview"] [data-pane="overview"], body[data-tab="products"] [data-pane="products"], body[data-tab="ads"] [data-pane="ads"],
+body[data-tab="guide"] [data-pane="guide"] { display:block; }
 .nodata { text-align:center; color:var(--muted); padding:28px; }
-body[data-tab="ads"] .nodata, body.has-data .nodata { display:none; }
+body[data-tab="ads"] .nodata, body[data-tab="guide"] .nodata, body.has-data .nodata { display:none; }
+.guide { max-width:900px; line-height:1.65; padding:22px 26px; }
+.guide h2 { font-size:17px; margin:0 0 4px; }
+.guide h3 { font-size:14.5px; margin:24px 0 8px; padding-top:14px; border-top:1px solid var(--line); }
+.guide p, .guide li, .guide dd { color:var(--text2); }
+.guide ul, .guide ol { padding-left:22px; margin:6px 0; }
+.guide .steps > li { margin-bottom:8px; }
+.guide .steps ul { margin-top:4px; }
+.guide code { font-family:ui-monospace, Consolas, Menlo, monospace; font-size:12.5px; background:var(--hover); border:1px solid var(--line); border-radius:4px; padding:0 4px; }
+.guide .kbd { display:inline-block; font-size:12.5px; font-weight:500; border:1px solid var(--line); border-bottom-width:2px; border-radius:5px; padding:0 6px; background:#fff; }
+.guide .tipbox { background:#fffbeb; border:1px solid #fde68a; border-radius:6px; padding:9px 12px; color:var(--text); }
+.guide table td, .guide table th { padding:8px 12px; vertical-align:top; }
+.guide .faq dt { font-weight:600; margin-top:10px; }
+.guide .faq dd { margin:2px 0 0 0; }
 .summary { background:var(--hover); border:1px solid var(--line); border-radius:6px; padding:9px 12px; margin:0 0 12px; line-height:1.7; }
 .explain { margin:10px 0 0; font-size:12.5px; color:var(--text2); }
 .explain summary { cursor:pointer; color:var(--muted); }
@@ -222,6 +236,7 @@ input.sm-in { width:96px; }
     <button data-tab="overview" class="on">Tổng quan gian hàng</button>
     <button data-tab="products">Sản phẩm &amp; thương hiệu</button>
     <button data-tab="ads">Quảng cáo Shopee<span class="dot" id="ads-dot" style="display:none" title="Có sản phẩm chạy QC chưa gán SKU"></span></button>
+    <button data-tab="guide">Hướng dẫn</button>
   </nav>
 
   <div class="card nodata" id="nodata">Chưa có số liệu. Chọn kỳ ở trên rồi bấm <b>Lấy dữ liệu</b> (hoặc <b>Tuần trước</b>).</div>
@@ -265,6 +280,69 @@ input.sm-in { width:96px; }
       </div>
     </section>
   </div>
+
+  <section data-pane="guide">
+    <div class="card guide">
+      <h2>Hướng dẫn sử dụng</h2>
+      <p class="muted">Trang này tổng hợp doanh thu sàn từ đơn hàng Sapo và hiệu quả quảng cáo Shopee từ file xuất của Shopee, theo mẫu <b>Shopee Ads Weekly Tracker</b>.</p>
+
+      <h3>Quy trình mỗi sáng thứ 2 (báo cáo tuần trước)</h3>
+      <ol class="steps">
+        <li><b>Lấy doanh thu Sapo:</b> bấm <span class="kbd">Tuần trước</span> ở đầu trang (tự chọn thứ 2 – chủ nhật tuần trước), đợi 1–2 phút.</li>
+        <li><b>Xuất file từ Quảng cáo Shopee</b> cho từng gian, chọn <b>đúng khoảng thời gian thứ 2 – chủ nhật tuần trước</b>, tải về dạng <b>.csv</b>:
+          <ul>
+            <li>Quảng cáo <b>Sản phẩm</b> (Dịch vụ Hiển thị Sản phẩm) – file có cột "Mã sản phẩm".</li>
+            <li>Quảng cáo <b>Shop</b> (Dịch vụ Hiển thị Shop) – nên dùng bản <b>theo từ khóa</b> (Keyword Level) để xem được từng từ khóa.</li>
+          </ul></li>
+        <li><b>Tải file lên:</b> vào tab <span class="kbd">Quảng cáo Shopee</span>, bấm <b>＋ Tải file Quảng cáo Shopee</b> hoặc kéo thả, chọn được nhiều file cùng lúc. Tool tự nhận gian hàng, loại quảng cáo và kỳ trong file.</li>
+        <li><b>Gán SKU</b> cho sản phẩm mới chạy quảng cáo (chỉ làm 1 lần cho mỗi sản phẩm, xem mục bên dưới).</li>
+        <li><b>Xem đánh giá</b> trên tab Quảng cáo, rồi bấm <span class="kbd">Tải Excel</span> để lưu / gửi báo cáo.</li>
+      </ol>
+      <p class="tipbox">💡 Kỳ của file Shopee phải <b>trùng đúng</b> kỳ doanh thu Sapo đang xem thì mới tính được TACOS. Nếu lệch, tab Quảng cáo sẽ hiện nút <b>"Lấy doanh thu Sapo kỳ này"</b> – bấm là xong.</p>
+
+      <h3>Gán Saleman cho gian hàng</h3>
+      <p>Tab <span class="kbd">Tổng quan gian hàng</span> → cột <b>Saleman</b>: chọn Evelyn / Boni / Ivy hoặc gõ tên khác, tự lưu. Chỉ cần làm 1 lần, tên saleman hiện trong bảng Quảng cáo và file Excel.</p>
+
+      <h3>Gán SKU (vì sao và cách làm)</h3>
+      <p>Shopee và Sapo gọi cùng 1 sản phẩm bằng 2 mã khác nhau (ví dụ Shopee <code>26303056546</code> = Sapo <code>GZLM3</code>). Tool cần biết 2 mã này là 1 để lấy doanh thu Sapo tính <b>TACOS</b>. Sản phẩm chưa gán hiện chữ đỏ <span class="miss">Chưa gán</span>:</p>
+      <ul>
+        <li>Bấm vào <b>SKU gợi ý</b> nếu đúng → lưu ngay.</li>
+        <li>Sản phẩm có nhiều phân loại (màu, ngàm Canon/Sony…) → bấm <b>"dùng cả N"</b>, hoặc bấm <b>gán</b> rồi gõ nhiều SKU cách nhau dấu phẩy.</li>
+        <li>Gợi ý sai / không có → bấm <b>gán</b>, gõ hoặc chọn SKU đúng trong danh sách, Enter để lưu.</li>
+        <li>Nút <b>"Chỉ hiện SP chưa gán"</b> giúp gán nhanh. Gán 1 lần, tool nhớ cho các tuần sau.</li>
+      </ul>
+      <p class="tipbox">⚠ Gợi ý dựa theo tên nên cần xem kỹ: "M40 Combo" (GZLM3) khác "M40 <b>SE</b> Combo" (GZLM9).</p>
+
+      <h3>Đọc các chỉ số</h3>
+      <div class="wrap" style="margin:8px 0 0; border:1px solid var(--line); border-radius:6px"><table>
+        <thead><tr><th>Chỉ số</th><th>Cách tính</th><th>Hiểu thế nào</th></tr></thead>
+        <tbody>
+          <tr><td><b>ROAS</b></td><td>Doanh số từ QC ÷ chi phí QC</td><td>Bỏ 1 đồng quảng cáo thu về bao nhiêu đồng. Càng cao càng tốt; <b>&lt; 8</b> là thấp.</td></tr>
+          <tr><td><b>TACOS</b></td><td>Chi phí QC ÷ doanh thu Sapo của các SP chạy QC × 100</td><td><b>8–12%</b> là tốt. Cao hơn → tốn QC so với doanh thu. Thấp hơn mà ROAS tốt → có thể tăng ngân sách. QC Shop chia cho doanh thu cả gian.</td></tr>
+          <tr><td><b>CTR</b></td><td>Lượt click ÷ lượt xem</td><td><b>&lt; 6%</b> → ít người bấm, xem lại ảnh bìa, tiêu đề.</td></tr>
+          <tr><td><b>CR</b></td><td>Đơn từ QC ÷ lượt click</td><td><b>&lt; 3%</b> → nhiều người xem nhưng ít mua, xem lại giá, mô tả.</td></tr>
+        </tbody></table></div>
+      <p style="margin-top:12px">Nhãn đánh giá: <span class="flag bad">đỏ – cần xử lý</span> <span class="flag warn">vàng – nên xem lại</span> <span class="flag good">xanh – đang tốt</span> <span class="flag info">xám – thông tin</span>. Mỗi dòng hiện nhãn quan trọng nhất, rê chuột vào ô <span class="more-flags">+N</span> để xem các nhận xét khác. Tốn tiền mà chưa ra đơn (từ 100 click) → <b>nên dừng chiến dịch</b>.</p>
+
+      <h3>File Excel gồm gì</h3>
+      <ul>
+        <li><b>Theo dõi tuần</b> – mỗi gian Shopee 1 dòng: saleman, bán chạy nhất, thương hiệu, chi phí QC Sản phẩm / Shop, doanh số QC, ROAS, TACOS, CTR, CR, đánh giá.</li>
+        <li><b>Quảng cáo Shopee</b> – chi tiết từng sản phẩm, QC Shop và từ khóa (khi đã tải file QC cùng kỳ).</li>
+        <li><b>Top sản phẩm</b> – từng gian xếp theo số lượng, ✓ = bán ≥ 30 cái.</li>
+        <li><b>Thương hiệu</b> – thương hiệu bán chạy theo số lượng (tất cả gian và từng gian).</li>
+      </ul>
+
+      <h3>Câu hỏi thường gặp</h3>
+      <dl class="faq">
+        <dt>TACOS hiện "–"?</dt><dd>Chưa có doanh thu Sapo cùng kỳ với file QC (bấm "Lấy doanh thu Sapo kỳ này"), hoặc sản phẩm chưa gán SKU.</dd>
+        <dt>Tải lại file của cùng gian, cùng tuần thì sao?</dt><dd>File mới thay file cũ (theo từng loại Sản phẩm / Shop), không bị cộng 2 lần. File QC Shop bản chiến dịch và bản từ khóa là cùng số tiền, chỉ cần 1 trong 2.</dd>
+        <dt>Tải nhầm file?</dt><dd>Bấm <b>Xoá file</b> ở dòng gian hàng trong bảng Quảng cáo (bấm 2 lần để xác nhận).</dd>
+        <dt>Doanh số từ QC (Shopee) lớn hơn doanh thu Sapo?</dt><dd>Bình thường: số Shopee chưa trừ đơn huỷ, hoàn, voucher; doanh thu Sapo đã trừ.</dd>
+        <dt>Mở trang thấy trống số liệu?</dt><dd>Hệ thống vừa cập nhật hoặc khởi động lại: bấm <b>Tuần trước</b> / <b>Lấy dữ liệu</b> lại. File QC, SKU đã gán và saleman vẫn còn nguyên.</dd>
+        <dt>Thương hiệu lấy từ đâu?</dt><dd>Sapo không lưu thương hiệu nên tool lấy chữ đầu tên sản phẩm (Ulanzi, Zhiyun, Telesin…).</dd>
+      </dl>
+    </div>
+  </section>
 
   <section data-pane="ads">
     <div class="card" id="ads-card">
