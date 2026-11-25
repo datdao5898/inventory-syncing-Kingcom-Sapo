@@ -197,6 +197,7 @@ button.link:hover { color:var(--text); background:none; }
 button.sm { padding:3px 9px; font-size:12px; }
 .map-in { width:140px; font:inherit; font-size:12px; padding:3px 6px; border:1px solid var(--line); border-radius:4px; }
 .miss { color:var(--bad); font-size:12px; }
+.warnline { color:#92400e; }
 tr.sum td { background:var(--hover); font-weight:600; }
 tr.subrow td { font-size:12.5px; color:var(--text2); border-bottom-style:dashed; }
 tr.subrow td:first-child { padding-left:30px !important; }
@@ -716,7 +717,10 @@ async function uploadAds(files) {
     const r = await api('api/ads/upload', {method: 'POST', headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({name: f.name, content: await f.text()})}).catch(() => ({data: null}));
     const d = r.data;
-    if (d && d.ok) { out.push('✓ ' + esc(d.shop) + ' · <b>' + esc(d.kind_label) + '</b> · ' + dmy(d.from) + ' – ' + dmy(d.to) + ' · ' + d.campaigns + ' chiến dịch' + (d.replaced ? ' (thay file cũ)' : '')); adsPeriod = d.from + '|' + d.to; }
+    if (d && d.ok) { out.push('✓ ' + esc(d.shop) + ' · <b>' + esc(d.kind_label) + '</b> · ' + dmy(d.from) + ' – ' + dmy(d.to) + ' · ' + d.campaigns + ' chiến dịch' + (d.replaced ? ' (thay file cũ)' : ''));
+      (d.mismatch || []).forEach(m => out.push('<span class="warnline">⚠ Gian <b>' + esc(d.shop) + '</b> đã có file <b>' + esc(m.kind_label) + '</b> kỳ <b>' + dmy(m.from) + ' – ' + dmy(m.to) +
+        '</b>, khác kỳ file vừa tải (' + dmy(d.from) + ' – ' + dmy(d.to) + ') → 2 file KHÔNG được gộp chung. Hãy xuất lại 2 file trên Shopee với cùng khoảng ngày rồi tải lên.</span>'));
+      adsPeriod = d.from + '|' + d.to; }
     else out.push('<span style="color:var(--bad)">✗ ' + esc((d && d.error) || f.name + ': lỗi tải lên') + '</span>');
   }
   $('#ads-msg').innerHTML = out.join('<br>');
@@ -747,6 +751,9 @@ function renderAds() {
       ? '<div class="notice"><span class="spinner"></span>Đang tự lấy doanh thu Sapo <b>kỳ ' + dmy(a.from) + ' – ' + dmy(a.to) + '</b> (theo ngày trong file) để tính TACOS… khoảng 1–2 phút.</div>'
       : '<div class="notice">Chưa có doanh thu Sapo <b>kỳ ' + dmy(a.from) + ' – ' + dmy(a.to) + '</b> để tính TACOS.' +
         '<button class="primary sm" id="ads-sales">Lấy doanh thu Sapo kỳ này</button></div>';
+  }
+  if (t.kind_mismatch) {
+    h += '<div class="notice">⚠ <b>' + t.kind_mismatch + ' gian</b> có file QC Sản phẩm và QC Shop <b>khác kỳ nhau</b> nên chưa được gộp: số liệu kỳ này đang thiếu 1 loại QC. Xem dòng cảnh báo dưới tên gian, xuất lại file cho cùng khoảng ngày rồi tải lên.</div>';
   }
   if (a.has_sales && t.unmapped) {
     h += '<div class="notice">⚠ <b>' + t.unmapped + ' sản phẩm</b> chạy quảng cáo chưa gán SKU Sapo → chưa tính được TACOS của các sản phẩm này.' +
@@ -813,6 +820,7 @@ function renderAds() {
       return '<tr class="shop-row"><td><button class="link shop-link" data-shopview="' + esc(s.shop) + '" title="Xem sản phẩm chạy QC của gian này">' + esc(s.shop) + '</button>' +
         '<div class="small muted">' + esc(s.kinds.map(k => k === 'shop' ? 'QC Shop' : 'QC SP').join(' + ')) + ' · tải lên ' + esc(s.uploaded_at.slice(11)) + ' ' + dmy(s.uploaded_at.slice(0, 10)) + '</div>' +
         (a.has_sales && !s.found_in_sapo ? '<div class="miss">Không thấy gian này trong đơn Sapo</div>' : '') +
+        (s.kind_mismatch || []).map(m => '<div class="miss">⚠ File ' + (m.kind === 'shop' ? 'QC Shop' : 'QC SP') + ' đang ở kỳ ' + dmy(m.from) + ' – ' + dmy(m.to) + ', khác kỳ này → chưa gộp</div>').join('') +
         '<button class="link" style="padding:0; margin-top:2px" data-del="' + esc(id) + '">' + (adsDel === id ? 'Bấm lần nữa để xoá' : 'Xoá file') + '</button></td>' +
         '<td>' + (esc(s.saleman) || '<span class="muted small">–</span>') + '</td>' +
         moneyTds(s) + shopTds(s, s, true) + sapoTds(s, false) + rateTds(s) + directTds(s) +

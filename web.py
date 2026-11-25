@@ -387,7 +387,10 @@ class Handler(BaseHTTPRequestHandler):
                           parsed["from"], parsed["to"], len(parsed["campaigns"]), " - thay bản cũ" if replaced else "")
             self.send_json({"ok": True, "shop": parsed["shop"], "kind": parsed["kind"], "kind_label": ads.KINDS[parsed["kind"]],
                             "from": parsed["from"], "to": parsed["to"],
-                            "campaigns": len(parsed["campaigns"]), "replaced": replaced})
+                            "campaigns": len(parsed["campaigns"]), "replaced": replaced,
+                            # file loai kia (SP <-> Shop) cua cung gian dang o ky khac chong lan -> canh bao xuat lai cho cung ky
+                            "mismatch": [{"kind_label": ads.KINDS["shop" if parsed["kind"] == "product" else "product"], "from": f, "to": t}
+                                         for f, t in ads.kind_mismatch(parsed["shop"], parsed["kind"], parsed["from"], parsed["to"])]})
         elif path == "/api/ads/map":
             item, skus = str(body.get("item_id", "")), body.get("skus") or []
             if not item.isdigit() or not isinstance(skus, list):

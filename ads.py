@@ -155,6 +155,17 @@ def delete_upload(shop, start, end, kind=None):
         return len(keep) != len(items)
 
 
+def kind_mismatch(shop, kind, start, end, items=None):
+    """Gian co file loai `kind` ky [start, end] nhung file loai con lai (SP <-> Shop) lai o ky KHAC ma chong lan ky nay
+    -> 2 file khong duoc gop (tool gop theo ky trung khop tung ngay). Tra ve [(from, to), ...] cua file loai kia; [] neu on."""
+    other = "shop" if kind == "product" else "product"
+    key = _norm(shop)
+    mine = [u for u in (uploads() if items is None else items) if _norm(u["shop"]) == key and u["kind"] == other]
+    if any((u["from"], u["to"]) == (start, end) for u in mine):
+        return []
+    return sorted({(u["from"], u["to"]) for u in mine if u["from"] <= end and start <= u["to"]})
+
+
 def set_map(item_id, skus):
     item_id = re.sub(r"\D", "", str(item_id))
     skus = [s.strip() for s in skus if s and s.strip()]
@@ -340,8 +351,8 @@ def analyze(start, end, report=None):
         for p in report["products"]:
             if p["channel"] == "Shopee":
                 sapo_products.setdefault(_norm(p["shop"]), []).append(p)
-    by_shop_files = {}
-    for u in uploads():
+    by_shop_files, all_files = {}, uploads()
+    for u in all_files:
         if (u["from"], u["to"]) == (start, end):
             by_shop_files.setdefault(_norm(u["shop"]), []).append(u)
     shops, total = [], _blank()
@@ -407,6 +418,8 @@ def analyze(start, end, report=None):
                       found_in_sapo=bool(sapo_shop), products=rows, shop_ads=shop_ads, product_ads=product_ads,
                       shop_orders=sapo_shop["orders"] if has_sales and sapo_shop else None,  # tong don ca gian (Sapo)
                       unmapped=sum(1 for r in rows if r["unmapped"]),
+                      kind_mismatch=[{"kind": "shop" if k == "product" else "product", "from": f, "to": t}
+                                     for k in {u["kind"] for u in files} for f, t in kind_mismatch(first["shop"], k, start, end, all_files)],
                       sapo_skus=[{"sku": p["sku"], "name": p["name"]} for p in sorted(prods, key=lambda p: -p["revenue"])])
         # TACOS cua gian = chi QC San pham (chi phi SP da gan / doanh thu Sapo cac SP do) - cong thuc Yu chon
         _metrics(shop_m, shop_mapped_rev if has_sales else None, shop_rev if has_sales else None)
@@ -418,6 +431,7 @@ def analyze(start, end, report=None):
     total["shop_orders"] = sum(s["shop_orders"] or 0 for s in shops) if has_sales else None
     _metrics(total, total_rev if has_sales else None, total_shop_rev if has_sales else None)
     shops.sort(key=lambda s: -s["cost"])
+    total["kind_mismatch"] = sum(1 for s in shops if s["kind_mismatch"])
     return {"from": start, "to": end, "has_sales": has_sales, "thresholds": THRESHOLDS, "total": total, "shops": shops,
             "kinds": KINDS, "salesmen": sorted(set(SALESMEN) | set(sm.values()))}
 
