@@ -270,59 +270,122 @@ def get_report(start, end, progress=None, fresh=False):
 
 
 # ---------------------------------------------------------------- excel
+# Trinh bay theo file mau sep gui FORM_REPORT_SHOPEE_ADS_MAU.xlsx (25/11/2026): sheet Tong Quan / Chi Tiet / Top Sell,
+# font Aptos, thanh tieu de xanh dam, hang ky bao cao, nhom cot mau, dong xen ke, dong Tong, khoi chu thich cong thuc.
+
+NAVY, BLUE, TEAL, SLATE = "172B4D", "285D91", "147D98", "526781"
+ZEBRA, TOTAL_BG, TEXT, MUTED, YELLOW, LINE = "F3F7FB", "EAF1F7", "203044", "66788D", "FFF1D2", "C9D3DF"
+MONEY, PCT, RATIO = "#,##0", "0.0%", "0.00"
+EXCEL_KINDS = {"product": "Hiển thị sản phẩm", "shop": "Quảng cáo Shop"}  # cach goi trong file mau
+
+
+class XL:
+    """Bo style dung chung cho cac sheet (theo file mau)."""
+
+    def __init__(self):
+        from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+        from openpyxl.utils import get_column_letter
+        self.A, self.Font, self.col = Alignment, Font, get_column_letter
+        self.fill = lambda c: PatternFill("solid", fgColor=c)
+        side = Side(style="thin", color=LINE)
+        self.box = Border(left=side, right=side, top=side, bottom=side)
+
+    def font(self, size=10, bold=False, color=TEXT, italic=False):
+        return self.Font(name="Aptos", size=size, bold=bold, color=color, italic=italic)
+
+    def bar(self, ws, row, text, ncols, fill=NAVY, size=16, height=40, start=1):
+        """Thanh tieu de (gop o, nen mau, chu trang dam)."""
+        if ncols > 1:
+            ws.merge_cells(start_row=row, start_column=start, end_row=row, end_column=start + ncols - 1)
+        for i in range(start, start + ncols):
+            c = ws.cell(row, i)
+            c.fill, c.font = self.fill(fill), self.font(size, True, "FFFFFF")
+            c.alignment = self.A(horizontal="left", vertical="center", indent=1)
+        ws.cell(row, start, text)
+        ws.row_dimensions[row].height = height
+
+    def info(self, ws, row, ncols, label, value, extra=None):
+        """Hang 'Ky bao cao' nen xanh nhat."""
+        for i in range(1, ncols + 1):
+            c = ws.cell(row, i)
+            c.fill, c.font = self.fill(ZEBRA), self.font(color=SLATE)
+            c.alignment = self.A(vertical="center")
+        a, b = ws.cell(row, 1, label), ws.cell(row, 2, value)
+        a.font, b.font = self.font(bold=True, color=BLUE), self.font(bold=True)
+        b.border = self.box
+        if extra:
+            e = ws.cell(row, 4, extra)
+            e.font = self.font(9.5, color=MUTED, italic=True)
+        ws.row_dimensions[row].height = 29
+
+    def groups(self, ws, row, groups):
+        """Hang nhom cot: [(nhan, so cot, mau)]."""
+        col = 1
+        for label, n, color in groups:
+            if n > 1:
+                ws.merge_cells(start_row=row, start_column=col, end_row=row, end_column=col + n - 1)
+            for i in range(col, col + n):
+                c = ws.cell(row, i)
+                c.fill, c.font, c.border = self.fill(color), self.font(bold=True, color="FFFFFF"), self.box
+                c.alignment = self.A(horizontal="center", vertical="center", wrap_text=True)
+            ws.cell(row, col, label)
+            col += n
+        ws.row_dimensions[row].height = 29
+
+    def header(self, ws, row, cols, height=62, size=10):
+        """cols: [(tieu de, dinh dang, rong, can le, mau nen)]."""
+        for i, (h, _, w, _, color) in enumerate(cols, 1):
+            c = ws.cell(row, i, h)
+            c.fill, c.font, c.border = self.fill(color), self.font(size, True, "FFFFFF"), self.box
+            c.alignment = self.A(horizontal="center", vertical="center", wrap_text=True)
+            ws.column_dimensions[self.col(i)].width = w
+        ws.row_dimensions[row].height = height
+
+    def row(self, ws, row, cols, values, zebra=False, total=False, height=28, styles=None):
+        """Ghi 1 dong du lieu. styles: {chi so cot: dict(font=..., fill=...)} de doi rieng tung o."""
+        bg = TOTAL_BG if total else (ZEBRA if zebra else "FFFFFF")
+        for i, ((_, fmt, _, align, _), v) in enumerate(zip(cols, values), 1):
+            c = ws.cell(row, i, v)
+            c.fill, c.border = self.fill(bg), self.box
+            c.font = self.font(bold=True, color=NAVY) if total else self.font()
+            c.alignment = self.A(horizontal=align, vertical="center", wrap_text=align == "left")
+            if fmt:
+                c.number_format = fmt
+            for k, val in ((styles or {}).get(i - 1) or {}).items():
+                setattr(c, k, val)
+        ws.row_dimensions[row].height = height
+
+    def notes(self, ws, row, ncols, lines, title="CHÚ THÍCH CÔNG THỨC & CHỈ SỐ:"):
+        self.bar(ws, row, title, ncols, size=11, height=28)
+        for k, text in enumerate(lines, row + 1):
+            ws.merge_cells(start_row=k, start_column=1, end_row=k, end_column=ncols)
+            c = ws.cell(k, 1, "• " + text)
+            c.fill, c.font = self.fill(ZEBRA), self.font(9.5, color=SLATE)
+            c.alignment = self.A(horizontal="left", vertical="center", wrap_text=True, indent=1)
+            ws.row_dimensions[k].height = 26
+
 
 def to_xlsx(report, ads_analysis=None):
-    """Excel theo file yeu cau BAO_CAO_SHOPEE_DEMO_AI + tra loi cua Yu (24/11/2026). Chi gian Shopee.
-    1. Theo doi tuan (Shopee Ads Weekly Tracker): moi gian 1 dong, du 4 nhom
-    2. Quang cao Shopee: chi tiet QC San pham / QC Shop / tu khoa (khi co file Shopee Ads cung ky)
-    3. Top san pham: tung gian, xep theo so luong, danh dau SP ban >= TOP_QTY cai
-    4. Thuong hieu: thuong hieu ban chay tung gian + tat ca gian (theo so luong)"""
+    """Excel chi gian Shopee, trinh bay theo file mau FORM_REPORT_SHOPEE_ADS_MAU:
+    1. Tong Quan: moi gian 1 dong (thong tin gian / hieu qua kinh doanh / hieu qua Shopee Ads / chi tiet bo sung) + dong Tong
+    2. Chi Tiet: tung san pham, QC Shop, tu khoa (khi co file Quang cao Shopee cung ky)
+    3. Top Sell: moi gian 1 khoi Top 10 san pham ban chay (theo so luong)
+    4. Thuong hieu: thuong hieu ban chay tat ca gian + tung gian"""
     import ads
     from openpyxl import Workbook
-    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
-    from openpyxl.utils import get_column_letter
-
-    head_font = Font(bold=True, color="FFFFFF")
-    head_fill = PatternFill("solid", fgColor="3F3F46")
-    thin = Side(style="thin", color="D4D4D8")
-    box = Border(left=thin, right=thin, top=thin, bottom=thin)
+    x = XL()
     d1, d2 = (datetime.strptime(report[k], "%Y-%m-%d") for k in ("from", "to"))
-    period = f"Từ {d1:%d/%m/%Y} đến {d2:%d/%m/%Y}"
-    note = "Chỉ gian Shopee. Không tính đơn đã huỷ; doanh thu đã trừ tiền hoàn (trả hàng). Nguồn: đơn hàng Sapo + file Quảng cáo Shopee."
-
-    def sheet(ws, title, headers, rows, formats, widths, top=1):
-        ws.cell(top, 1, title).font = Font(bold=True, size=14)
-        ws.cell(top + 1, 1, period)
-        ws.cell(top + 2, 1, note).font = Font(italic=True, color="71717A")
-        hr = top + 4
-        for i, h in enumerate(headers, 1):
-            c = ws.cell(hr, i, h)
-            c.font, c.fill, c.border = head_font, head_fill, box
-            c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
-        for k, r in enumerate(rows, hr + 1):
-            for i, v in enumerate(r, 1):
-                ws.cell(k, i, v)
-            for i, f in enumerate(formats, 1):
-                c = ws.cell(k, i)
-                c.border = box
-                if f:
-                    c.number_format = f
-        for i, w in enumerate(widths, 1):
-            ws.column_dimensions[get_column_letter(i)].width = w
-        ws.row_dimensions[hr].height = 44
-        ws.freeze_panes = ws.cell(hr + 1, 1)
-        return hr
-
+    period = f"{d1:%Y/%m/%d} - {d2:%Y/%m/%d}"
     wb = Workbook()
     ad_shops = ads.by_shop(ads_analysis) if ads_analysis and ads_analysis.get("has_sales") else {}
     ws = wb.active
-    ws.title = "Theo dõi tuần"
-    tracker_sheet(ws, report, ad_shops, sheet)
+    ws.title = "Tổng Quan"
+    tracker_sheet(ws, report, ad_shops, x, period)
     if ad_shops:
-        ads_sheet(wb.create_sheet("Quảng cáo Shopee"), ads_analysis, sheet, period)
+        ads_sheet(wb.create_sheet("Chi Tiết"), ads_analysis, x, period)
     names = brand_names(report["all_products"])
-    top_sheet(wb.create_sheet("Top sản phẩm"), report, sheet, names)
-    brand_sheet(wb.create_sheet("Thương hiệu"), report, sheet, names)
+    top_sheet(wb.create_sheet("Top Sell"), report, x, names, period)
+    brand_sheet(wb.create_sheet("Thương hiệu"), report, x, names, period)
     buf = io.BytesIO()
     wb.save(buf)
     return fix_core_dates(buf.getvalue())
@@ -337,85 +400,25 @@ def _shopee_shops(report):
     return [(r, prods.get(r["shop"], [])) for r in report["shops"] if r["channel"] == "Shopee"]
 
 
-def top_sheet(ws, report, sheet, names):
-    """Nhom 1: top san pham tung gian theo so luong; luon co it nhat TOP_N SP dau (file mau: Top 10 ban chay)."""
+def tracker_sheet(ws, report, ad_shops, x, period):
+    """Sheet Tong Quan (file mau) + cac cot bo sung cua tool o nhom cuoi."""
     import ads
-    from openpyxl.styles import Font
-    sm, rows, best_rows = ads.salesmen(), [], []
-    for r, prods in _shopee_shops(report):
-        known = {k for k in (brand_key(p["name"]) for p in prods) if k}
-        ranked = sorted((p for p in prods if p["qty"] > 0), key=lambda p: (-p["qty"], -p["revenue"]))
-        n = max(TOP_N, sum(1 for p in ranked if p["qty"] >= TOP_QTY))
-        for i, p in enumerate(ranked[:n], 1):
-            if i == 1:
-                best_rows.append(len(rows))
-            rows.append([r["shop"], ads.salesman_of(r["shop"], sm), i, p["sku"], p["name"], names.get(brand_key(p["name"], known), brand_key(p["name"], known)) or "Khác",
-                         p["qty"], round(p["revenue"]), "✓" if p["qty"] >= TOP_QTY else ""])
-    hr = sheet(ws, f"Top sản phẩm bán chạy từng gian (theo số lượng; ✓ = bán ≥ {TOP_QTY} cái)",
-               ["Gian hàng", "Saleman", "Hạng", "SKU", "Tên sản phẩm", "Thương hiệu", "Số lượng", "Doanh thu (đ)", f"≥ {TOP_QTY} cái"],
-               rows, [None, None, "0", None, None, None, "#,##0", "#,##0", None], [24, 11, 6, 12, 60, 14, 10, 16, 9])
-    bold = Font(bold=True)
-    for k in best_rows:  # hang 1 = bestseller
-        for c in ws[hr + 1 + k]:
-            c.font = bold
-    if rows:
-        ws.auto_filter.ref = f"A{hr}:I{hr + len(rows)}"
-
-
-def brand_sheet(ws, report, sheet, names):
-    """Nhom 1: thuong hieu ban chay (theo so luong) - tat ca gian Shopee + tung gian."""
-    import ads
-    from openpyxl.styles import Font, PatternFill
-    sm, rows, totals = ads.salesmen(), [], []
-    shops = _shopee_shops(report)
-    merged = {}
-    for _, prods in shops:  # gop SP cua cac gian theo SKU de dem so SP khong trung
-        for p in prods:
-            m = merged.setdefault(p["sku"].upper() or p["name"], {"name": p["name"], "qty": 0, "revenue": 0.0})
-            m["qty"] += p["qty"]; m["revenue"] += p["revenue"]
-    for label, saleman, prods in [("TẤT CẢ GIAN SHOPEE", "", list(merged.values()))] + [(r["shop"], ads.salesman_of(r["shop"], sm), ps) for r, ps in shops]:
-        stats = brand_stats(prods, 10 if not saleman and label.startswith("TẤT CẢ") else 5, names)
-        totals.append(len(rows))
-        for i, b in enumerate(stats, 1):
-            rows.append([label, saleman, i, b["brand"], b["qty"], round(b["revenue"]), b["products"]])
-    hr = sheet(ws, "Thương hiệu bán chạy (theo số lượng; thương hiệu = chữ đầu tên sản phẩm)",
-               ["Gian hàng", "Saleman", "Hạng", "Thương hiệu", "Số lượng", "Doanh thu (đ)", "Số sản phẩm"],
-               rows, [None, None, "0", None, "#,##0", "#,##0", "#,##0"], [24, 11, 6, 18, 11, 16, 11])
-    fill = PatternFill("solid", fgColor="F4F4F5")
-    for k in range(totals[1] if len(totals) > 1 else len(rows)):  # khoi tong tat ca gian
-        for c in ws[hr + 1 + k]:
-            c.fill = fill
-    for k in totals:
-        ws.cell(hr + 1 + k, 4).font = Font(bold=True)
-
-
-def tracker_sheet(ws, report, ad_shops, sheet):
-    """Bang theo doi (Shopee Ads Weekly Tracker): moi gian Shopee 1 dong, du 4 nhom cua file yeu cau."""
-    import ads
-    from openpyxl.styles import Font
-    d1, d2 = (datetime.strptime(report[k], "%Y-%m-%d") for k in ("from", "to"))
-    ky = f"{d1:%d/%m} – {d2:%d/%m/%Y}"
     sm = ads.salesmen()
-    vn = lambda x: f"{round(x):,}".replace(",", ".")
+    vn = lambda v: f"{round(v):,}".replace(",", ".")
     div = lambda a, b: a / b if a is not None and b else None  # ty le (Excel dinh dang %), None neu khong tinh duoc
-    rows = []
+    aov = lambda rev, n: round(rev / n) if n else None
     tot = {"orders": 0, "revenue": 0.0, "sp_cost": 0.0, "shop_cost": 0.0, "cost": 0.0, "conv": 0.0, "gmv": 0.0,
            "mapped_cost": 0.0, "sapo_rev": 0.0, "impr": 0.0, "clicks": 0.0, "ad_orders_base": 0, "ad_rev_base": 0.0}
     has_any_ads = has_any_sp = has_any_shop = False
-    aov = lambda rev, n: round(rev / n) if n else None
 
-    def ad_cols(orders, revenue, sp_cost, shop_cost, cost, conv, gmv, sapo_rev, mapped_cost, impr, clicks):
-        """Cot nhom QC theo file mau FORM_REPORT_SHOPEE_ADS_MAU (dung chung cho dong gian va dong Tong)."""
-        return [sp_cost, shop_cost, cost, conv, gmv,
-                div(cost, conv),                                   # CPO = chi phi QC / don tu QC
-                div(conv, orders),                                 # ty trong don tu QC / tong don gian
-                div(gmv, revenue),                                 # ty trong DT QC / DT gian
-                div(gmv, cost),                                    # ROAS
-                div(cost, gmv),                                    # ACOS = chi phi / doanh so QC
-                div(cost, revenue),                                # TACOS (file mau) = chi phi QC / DT ca gian
-                sapo_rev, div(mapped_cost, sapo_rev),              # TACOS SP chay QC (cong thuc Yu)
-                impr, clicks, div(clicks, impr), div(conv, clicks)]
+    def ad_cols(orders, revenue, cost, conv, gmv):
+        """Nhom HIEU QUA SHOPEE ADS dung thu tu file mau."""
+        return [cost, conv, gmv, div(cost, conv), div(conv, orders), div(gmv, revenue), div(gmv, cost), div(cost, gmv), div(cost, revenue)]
 
+    def extra_cols(sp_cost, shop_cost, impr, clicks, conv, sapo_rev, mapped_cost):
+        return [sp_cost, shop_cost, impr, clicks, div(clicks, impr), div(conv, clicks), sapo_rev, div(mapped_cost, sapo_rev)]
+
+    rows = []
     for r in report["shops"]:
         if r["channel"] != "Shopee":
             continue
@@ -425,8 +428,8 @@ def tracker_sheet(ws, report, ad_shops, sheet):
         orders, revenue = r["orders"], round(r["revenue"])
         tot["orders"] += orders
         tot["revenue"] += revenue
-        row = [ky, r["shop"], ads.salesman_of(r["shop"], sm), "Shopee", orders, revenue, aov(revenue, orders),
-               f"{best['name']} ({vn(best['qty'])} cái)" if best else None, brands or None, len(r.get("top_qty", []))]
+        row = [r["shop"], ads.salesman_of(r["shop"], sm), "Shopee", orders, revenue, aov(revenue, orders)]
+        sell = [f"{best['name']} ({vn(best['qty'])} cái)" if best else None, brands or None, len(r.get("top_qty", []))]
         if a:
             has_any_ads = True
             sa = a.get("shop_ads") or {}
@@ -437,8 +440,8 @@ def tracker_sheet(ws, report, ad_shops, sheet):
             shop_cost = round(sa.get("cost", 0)) if sa else None
             sapo_rev = round(a.get("sapo_revenue") or 0) if has_sp else None
             mapped = a.get("mapped_cost", 0.0) if has_sp else None
-            row += ad_cols(orders, revenue, sp_cost, shop_cost, round(a["cost"]), a["conversions"], round(a["gmv"]),
-                           sapo_rev, mapped, a["impressions"], a["clicks"])
+            row += ad_cols(orders, revenue, round(a["cost"]), a["conversions"], round(a["gmv"]))
+            row += extra_cols(sp_cost, shop_cost, a["impressions"], a["clicks"], a["conversions"], sapo_rev, mapped) + sell
             row.append("; ".join(f["text"] for f in a["flags"] + [dict(f, text="QC Shop: " + f["text"]) for f in sa.get("flags", [])]))
             for k, v in (("sp_cost", sp_cost), ("shop_cost", shop_cost), ("cost", round(a["cost"])), ("conv", a["conversions"]),
                          ("gmv", round(a["gmv"])), ("sapo_rev", sapo_rev), ("mapped_cost", mapped),
@@ -447,100 +450,171 @@ def tracker_sheet(ws, report, ad_shops, sheet):
             tot["ad_orders_base"] += orders
             tot["ad_rev_base"] += revenue
         else:
-            row += [None] * 17 + ["Chưa có file Quảng cáo Shopee cùng kỳ"]
+            row += [None] * 9 + [None] * 8 + sell + ["Chưa có file Quảng cáo Shopee cùng kỳ"]
         rows.append(row)
-    if rows:  # dong Tong (nhu file mau); ty le QC chi tinh tren cac gian co file QC
-        t = tot
-        total = ["", "TỔNG", "", "Shopee", t["orders"], t["revenue"], aov(t["revenue"], t["orders"]), None, None, None]
-        if has_any_ads:
-            total += ad_cols(t["ad_orders_base"], t["ad_rev_base"], t["sp_cost"] if has_any_sp else None,
-                             t["shop_cost"] if has_any_shop else None, t["cost"],
-                             t["conv"], t["gmv"], t["sapo_rev"] if has_any_sp else None, t["mapped_cost"] if has_any_sp else None,
-                             t["impr"], t["clicks"]) + [None]
-        else:
-            total += [None] * 18
-        rows.append(total)
-    money, pc = "#,##0", "0.0%"
-    hr = sheet(ws, "Shopee Ads Weekly Tracker – theo dõi quảng cáo theo gian hàng",
-               ["Kỳ", "Gian hàng", "Saleman", "Nền tảng", "Tổng số đơn", "Doanh thu gian hàng (đ)", "AOV (đ)",
-                "Bán chạy nhất (số lượng)", "Thương hiệu bán chạy (số lượng)", f"Số SP bán ≥ {TOP_QTY} cái",
-                "Chi phí QC Sản phẩm (đ)", "Chi phí QC Shop (đ)", "Tổng chi phí QC (đ)", "Đơn hàng từ QC", "Doanh số từ QC (đ)",
-                "CPO (đ)", "Tỷ trọng đơn từ QC", "Tỷ trọng DT QC", "ROAS (lần)", "ACOS", "TACOS (QC / DT cả gian)",
-                "Doanh thu Sapo SP chạy QC (đ)", "TACOS SP chạy QC", "Lượt hiển thị", "Lượt click", "CTR", "CR", "Đánh giá tự động"],
-               rows, [None, None, None, None, money, money, money, None, None, money,
-                      money, money, money, money, money, money, pc, pc, "0.0", "0.0%", "0.0%",
-                      money, "0.0%", money, money, "0.00%", "0.00%", None],
-               [16, 24, 11, 9, 9, 16, 13, 40, 34, 10, 14, 13, 14, 9, 15, 12, 10, 10, 7, 8, 10, 16, 9, 11, 9, 8, 8, 70])
-    if rows:
-        for c in ws[hr + len(rows)]:  # dong Tong in dam
-            c.font = Font(bold=True)
-    notes = [
-        "AOV = doanh thu gian hàng / tổng số đơn.  CPO = chi phí QC / đơn hàng từ QC.",
-        "Tỷ trọng đơn từ QC = đơn hàng từ QC / tổng số đơn.  Tỷ trọng DT QC = doanh số từ QC / doanh thu gian hàng.",
-        "ROAS = doanh số từ QC / chi phí QC (càng cao càng tốt).  ACOS = chi phí QC / doanh số từ QC (càng thấp càng tốt).",
-        "TACOS (QC / DT cả gian) = tổng chi phí QC / doanh thu gian hàng (công thức file mẫu).",
+    t = tot
+    total = ["Tổng", "", "Shopee", t["orders"], t["revenue"], aov(t["revenue"], t["orders"])]
+    if has_any_ads:  # ty le QC chi tinh tren cac gian co file QC
+        total += ad_cols(t["ad_orders_base"], t["ad_rev_base"], t["cost"], t["conv"], t["gmv"])
+        total += extra_cols(t["sp_cost"] if has_any_sp else None, t["shop_cost"] if has_any_shop else None, t["impr"], t["clicks"],
+                            t["conv"], t["sapo_rev"] if has_any_sp else None, t["mapped_cost"] if has_any_sp else None)
+    else:
+        total += [None] * 17
+    total += [None, None, None, None]
+
+    L, C, R = "left", "center", "right"
+    cols = [("Gian hàng", None, 26, L, BLUE), ("Saleman", None, 14, L, BLUE), ("Nền tảng", None, 11, C, BLUE),
+            ("Tổng số đơn", MONEY, 11, C, BLUE), ("Doanh thu gian hàng (đ)", MONEY, 18, R, BLUE), ("AOV (gian hàng)", MONEY, 15, R, BLUE),
+            ("Chi phí quảng cáo (đ)", MONEY, 16, R, TEAL), ("Đơn hàng từ Ads", MONEY, 11, C, TEAL),
+            ("Doanh thu từ Shopee Ads (VNĐ)", MONEY, 18, R, TEAL), ("CPO", MONEY, 12, R, TEAL),
+            ("Tỷ trọng đơn hàng từ Ads", PCT, 12, R, TEAL), ("Tỷ trọng DT Ads (%)", PCT, 12, R, TEAL),
+            ("ROAS (Lần)", RATIO, 10, R, TEAL), ("ACOS (%)", PCT, 10, R, TEAL), ("TACOS (%)", PCT, 10, R, TEAL),
+            ("Chi phí QC Sản phẩm (đ)", MONEY, 15, R, SLATE), ("Chi phí QC Shop (đ)", MONEY, 14, R, SLATE),
+            ("Lượt hiển thị", MONEY, 12, R, SLATE), ("Lượt click", MONEY, 10, R, SLATE), ("CTR", "0.00%", 9, R, SLATE),
+            ("CR", "0.00%", 9, R, SLATE), ("Doanh thu Sapo SP chạy QC (đ)", MONEY, 16, R, SLATE),
+            ("TACOS SP chạy QC", PCT, 11, R, SLATE), ("Bán chạy nhất (số lượng)", None, 38, L, SLATE),
+            ("Thương hiệu bán chạy (số lượng)", None, 32, L, SLATE), (f"Số SP bán ≥ {TOP_QTY} cái", MONEY, 11, C, SLATE),
+            ("Đánh giá tự động", None, 60, L, SLATE)]
+    n = len(cols)
+    x.bar(ws, 1, "TỔNG DOANH THU CÁC SÀN THƯƠNG MẠI ĐIỆN TỬ", n, size=17, height=39)
+    x.info(ws, 2, n, "Kỳ báo cáo (Tuần):", period,
+           "Nguồn: đơn hàng Sapo (không tính đơn huỷ, đã trừ tiền hoàn) + file Quảng cáo Shopee cùng kỳ. Chỉ gian Shopee.")
+    x.groups(ws, 4, [("THÔNG TIN GIAN HÀNG", 3, SLATE), ("HIỆU QUẢ KINH DOANH TỔNG", 3, BLUE),
+                     ("HIỆU QUẢ SHOPEE ADS (QUẢNG CÁO)", 9, TEAL), ("CHI TIẾT BỔ SUNG (TOOL)", n - 15, SLATE)])
+    x.header(ws, 5, cols)
+    shop_style = {0: {"font": x.font(bold=True, color=BLUE)}, 1: {"font": x.font(color=MUTED)}}
+    for k, v in enumerate(rows):
+        x.row(ws, 6 + k, cols, v, zebra=k % 2 == 1, height=34, styles=shop_style)
+    x.row(ws, 6 + len(rows), cols, total, total=True)
+    x.notes(ws, 8 + len(rows), 15, [
+        "Giá trị đơn hàng bình quân (AOV) = Tổng doanh thu / Số lượng đơn hàng.",
+        "ROAS (Return on Ad Spend) = Doanh thu từ Shopee Ads / Ngân sách quảng cáo (chỉ số càng cao càng tốt).",
+        "ACOS (Advertising Cost of Sales) = Chi phí quảng cáo / Doanh thu từ Shopee Ads (chỉ số càng thấp càng tốt).",
+        "Tỷ trọng DT Ads (%) = Doanh thu từ Shopee Ads / Tổng doanh thu toàn gian hàng.  Tỷ trọng đơn hàng từ Ads = Đơn hàng từ Ads / Tổng số đơn.",
+        "CPO (Cost Per Order) – chi phí quảng cáo trên mỗi đơn hàng = Tổng chi phí Shopee Ads / Số đơn hàng từ Ads.",
+        "TACOS (Total Advertising Cost Of Sales) = Chi phí Shopee Ads / Tổng doanh thu gian hàng.",
         "TACOS SP chạy QC = chi phí QC Sản phẩm / doanh thu Sapo của các SP chạy QC (công thức Yu, tốt 8–12%; dùng cho đánh giá tự động).",
-        "Tổng số đơn, doanh thu: đơn Sapo, không tính đơn huỷ, đã trừ tiền hoàn. Số QC theo file Quảng cáo Shopee cùng kỳ (chưa trừ huỷ, hoàn).",
-        "Bán chạy và thương hiệu xếp theo số lượng; thương hiệu lấy theo chữ đầu tên sản phẩm. Dòng TỔNG: tỷ lệ QC chỉ tính trên các gian có file QC.",
-    ]
-    for i, text in enumerate(notes):
-        ws.cell(hr + len(rows) + 2 + i, 1, text).font = Font(italic=True, color="71717A")
-    if rows:
-        ws.auto_filter.ref = f"A{hr}:AB{hr + len(rows) - 1}"
+        "Doanh thu, số đơn: đơn Sapo, không tính đơn huỷ, đã trừ tiền hoàn. Số liệu quảng cáo theo file Shopee (chưa trừ huỷ, hoàn).",
+        "Dòng Tổng: các tỷ lệ quảng cáo chỉ tính trên những gian đã có file Quảng cáo Shopee cùng kỳ.",
+    ])
+    ws.freeze_panes = "B6"
+    ws.sheet_view.zoomScale = 110
 
 
-def ads_sheet(ws, a, sheet, period):
-    """Sheet Quang cao Shopee (= sheet "Chi Tiet" file mau): moi dong 1 san pham / chien dich chay QC, kem dong tong tung gian."""
-    import ads
-    from openpyxl.styles import Font, PatternFill
+def ads_sheet(ws, a, x, period):
+    """Sheet Chi Tiet (file mau): tung san pham / QC Shop / tu khoa, moi gian ket thuc bang dong Tong gian."""
     T = a["thresholds"]
     pct = lambda v: None if v is None else v / 100
     rnd = lambda v: None if v is None else round(v)
 
     def line(shop, kind, name, sku, m, sapo=True):
         return [shop, kind, name, sku, m["sold"], round(m["gmv"]), round(m["cost"]), m["impressions"], m["clicks"], pct(m["ctr"]),
-                m["add_to_cart"], pct(m.get("atc_rate")), m["conversions"], pct(m["cr"]),
-                m["conversions_direct"], pct(m.get("cr_direct")), rnd(m.get("cpo_direct")),
-                m["roas"], m["roas_direct"], pct(m.get("acos")), pct(m.get("acos_direct")),
+                m["add_to_cart"], pct(m.get("atc_rate")), m["conversions_direct"], pct(m.get("cr_direct")), rnd(m.get("cpo_direct")),
+                m["roas_direct"], pct(m.get("acos_direct")),
+                m["conversions"], pct(m["cr"]), m["roas"], pct(m.get("acos")),
                 rnd(m.get("sapo_revenue")) if sapo else None, pct(m.get("tacos")) if sapo else None,
                 "; ".join(f["text"] for f in m["flags"])]
 
-    rows, shop_rows = [], []
+    L, C, R = "left", "center", "right"
+    cols = [("Gian hàng", None, 20, L, BLUE), ("Loại hình quảng cáo", None, 19, L, BLUE), ("Tên chiến dịch", None, 42, L, BLUE),
+            ("SKU", None, 15, C, BLUE), ("Sản phẩm đã bán", MONEY, 11, C, BLUE), ("Doanh số", MONEY, 15, R, BLUE),
+            ("Chi phí", MONEY, 13, R, BLUE), ("Số lượt xem", MONEY, 11, R, BLUE), ("Số lượt click", MONEY, 10, R, BLUE),
+            ("Tỷ Lệ Click", "0.00%", 10, R, BLUE), ("Thêm vào giỏ hàng", MONEY, 11, R, BLUE),
+            ("Tỷ lệ Thêm vào giỏ hàng", "0.00%", 12, R, BLUE), ("Lượt chuyển đổi trực tiếp", MONEY, 12, C, BLUE),
+            ("Tỷ lệ chuyển đổi trực tiếp", "0.00%", 12, R, BLUE), ("Chi phí cho mỗi lượt chuyển đổi trực tiếp", MONEY, 15, R, BLUE),
+            ("ROAS trực tiếp", RATIO, 10, R, BLUE), ("ACOS trực tiếp", PCT, 10, R, BLUE),
+            ("Đơn từ QC (tổng)", MONEY, 10, C, TEAL), ("CR", "0.00%", 9, R, TEAL), ("ROAS", RATIO, 9, R, TEAL),
+            ("ACOS", PCT, 9, R, TEAL), ("Doanh thu Sapo SP chạy QC (đ)", MONEY, 15, R, TEAL), ("TACOS", PCT, 9, R, TEAL),
+            ("Đánh giá tự động", None, 60, L, TEAL)]
+    n = len(cols)
+    x.bar(ws, 1, "CHI TIẾT CHIẾN DỊCH QUẢNG CÁO", n, size=16, height=41)
+    x.info(ws, 2, n, "Thời gian:", period, "Cột tiêu đề xanh ngọc (từ “Đơn từ QC” trở đi): chỉ số bổ sung của tool (tính cả chuyển đổi gián tiếp, ghép doanh thu Sapo).")
+    x.header(ws, 4, cols, height=67)
+    kind_style = {1: {"fill": x.fill(YELLOW)}}
+    k, r = 0, 5
     for s in a["shops"]:
-        shop_rows.append(len(rows))
-        rows.append(line(s["shop"], "TỔNG GIAN" + (f" · {s['saleman']}" if s.get("saleman") else ""), "", "",
-                         dict(s, sapo_revenue=s.get("sapo_revenue") or 0)))
+        lines = [line(s["shop"], EXCEL_KINDS["product"], p["name"], ", ".join(p["skus"]), p) for p in s["products"]]
         sa = s.get("shop_ads")
         if sa:
-            rows.append(line(s["shop"], ads.KINDS["shop"], ", ".join(sa["campaigns"]), "(cả gian)", sa))
-            for k in sa.get("keywords", []):
-                rows.append(line(s["shop"], ads.KINDS["shop"], f"   Từ khóa: {k['keyword']}" + (f" ({k['keyword_type']})" if k["keyword_type"] else ""),
-                                 "", k, sapo=False))
-        for p in s["products"]:
-            rows.append(line(s["shop"], ads.KINDS["product"], p["name"], ", ".join(p["skus"]), p))
-    money = "#,##0"
-    hr = sheet(ws, "Chi tiết chiến dịch quảng cáo Shopee (theo file Shopee Ads + doanh thu Sapo)",
-               ["Gian hàng", "Loại hình quảng cáo", "Tên chiến dịch / sản phẩm", "SKU Sapo", "Sản phẩm đã bán", "Doanh số từ QC (đ)",
-                "Chi phí QC (đ)", "Lượt xem", "Lượt click", "Tỷ lệ click (CTR)", "Thêm vào giỏ hàng", "Tỷ lệ thêm vào giỏ",
-                "Đơn từ QC", "CR", "Lượt chuyển đổi trực tiếp", "Tỷ lệ chuyển đổi trực tiếp", "Chi phí mỗi chuyển đổi trực tiếp (đ)",
-                "ROAS", "ROAS trực tiếp", "ACOS", "ACOS trực tiếp", "Doanh thu Sapo SP chạy QC (đ)", "TACOS", "Đánh giá tự động"],
-               rows, [None, None, None, None, money, money, money, money, money, "0.00%", money, "0.00%", money, "0.00%",
-                      money, "0.00%", money, "0.0", "0.0", "0.0%", "0.0%", money, "0.0%", None],
-               [22, 20, 50, 14, 9, 15, 13, 10, 9, 9, 9, 9, 9, 8, 10, 10, 13, 7, 8, 8, 8, 16, 8, 70])
-    bold, fill = Font(bold=True), PatternFill("solid", fgColor="F4F4F5")
-    for k in shop_rows:
-        for c in ws[hr + 1 + k]:
-            c.font, c.fill = bold, fill
-    notes = [
-        "CTR = click / lượt xem.  Tỷ lệ thêm vào giỏ = thêm vào giỏ / click.  CR = đơn từ QC / click.  Tỷ lệ chuyển đổi trực tiếp = chuyển đổi trực tiếp / click.",
-        "Chi phí mỗi chuyển đổi trực tiếp = chi phí / lượt chuyển đổi trực tiếp.  ROAS = doanh số QC / chi phí.  ACOS = chi phí / doanh số QC "
-        "(“trực tiếp” = chỉ tính doanh số, đơn của chính sản phẩm được quảng cáo).",
+            lines.append(line(s["shop"], EXCEL_KINDS["shop"], ", ".join(sa["campaigns"]) or EXCEL_KINDS["shop"], "(cả gian)", sa))
+            for kw in sa.get("keywords", []):
+                lines.append(line(s["shop"], EXCEL_KINDS["shop"], f"   Từ khóa: {kw['keyword']}" + (f" ({kw['keyword_type']})" if kw["keyword_type"] else ""),
+                                  "", kw, sapo=False))
+        for i, v in enumerate(lines):
+            if i:
+                v[0] = None  # file mau: ten gian chi ghi o dong dau cua gian
+            x.row(ws, r, cols, v, zebra=k % 2 == 1, height=40, styles={**kind_style, 0: {"font": x.font(bold=True, color=BLUE)}})
+            r += 1
+            k += 1
+        x.row(ws, r, cols, line(f"Tổng {s['shop']}", "Tổng gian hàng" + (f" · {s['saleman']}" if s.get("saleman") else ""), "", "",
+                                dict(s, sapo_revenue=s.get("sapo_revenue") or 0)), total=True, height=40)
+        r += 1
+        k = 0
+    x.notes(ws, r + 1, 17, [
+        "Tỷ Lệ Click = số lượt click / số lượt xem.  Tỷ lệ thêm vào giỏ hàng = thêm vào giỏ / số lượt click.",
+        "Lượt chuyển đổi trực tiếp = đơn của chính sản phẩm được quảng cáo.  Tỷ lệ chuyển đổi trực tiếp = lượt chuyển đổi trực tiếp / số lượt click.",
+        "Chi phí cho mỗi lượt chuyển đổi trực tiếp = chi phí / lượt chuyển đổi trực tiếp.  ROAS trực tiếp = doanh số trực tiếp / chi phí.  ACOS trực tiếp = chi phí / doanh số trực tiếp.",
+        "Đơn từ QC (tổng), CR, ROAS, ACOS: tính cả chuyển đổi gián tiếp (khách bấm QC rồi mua sản phẩm khác của gian).",
         f"TACOS = chi phí QC / doanh thu Sapo của SKU đã gán (tốt: {T['tacos_low']:g}–{T['tacos_high']:g}%); riêng Quảng cáo Shop chia cho doanh thu cả gian.",
         "Doanh số QC lấy theo Shopee (chưa trừ huỷ, hoàn); doanh thu Sapo đã trừ.",
-    ]
-    for i, text in enumerate(notes):
-        ws.cell(hr + len(rows) + 2 + i, 1, text).font = Font(italic=True, color="71717A")
-    ws.auto_filter.ref = f"A{hr}:X{hr + len(rows)}"
+    ])
+    ws.freeze_panes = "D5"
+
+
+def top_sheet(ws, report, x, names, period):
+    """Sheet Top Sell (file mau): moi gian 1 khoi Top san pham ban chay theo so luong (it nhat TOP_N, du cac SP >= TOP_QTY)."""
+    import ads
+    sm = ads.salesmen()
+    C, L, R = "center", "left", "right"
+    cols = [("SKU", None, 20, C, TEAL), ("Tên Sản Phẩm", None, 54, L, TEAL), ("Số Lượng", MONEY, 18, C, TEAL),
+            ("Doanh Thu", MONEY, 24, R, TEAL), ("Thương hiệu", None, 16, C, TEAL)]
+    r = 2
+    for shop, prods in _shopee_shops(report):
+        known = {k for k in (brand_key(p["name"]) for p in prods) if k}
+        ranked = sorted((p for p in prods if p["qty"] > 0), key=lambda p: (-p["qty"], -p["revenue"]))
+        n = max(TOP_N, sum(1 for p in ranked if p["qty"] >= TOP_QTY))
+        saleman = ads.salesman_of(shop["shop"], sm)
+        x.bar(ws, r, shop["shop"].upper(), len(cols), size=16, height=42)
+        x.bar(ws, r + 1, f"TOP {min(n, len(ranked)) or TOP_N} SẢN PHẨM BÁN CHẠY" + (f"  ·  Saleman: {saleman}" if saleman else "")
+              + f"  ·  {period}", len(cols), fill=BLUE, size=11, height=32)
+        x.header(ws, r + 3, cols, height=39, size=11)
+        for i, p in enumerate(ranked[:n]):
+            brand = names.get(brand_key(p["name"], known), brand_key(p["name"], known)) or "Khác"
+            bold = {j: {"font": x.font(bold=True)} for j in range(len(cols))} if p["qty"] >= TOP_QTY else None
+            x.row(ws, r + 4 + i, cols, [p["sku"], p["name"], p["qty"], round(p["revenue"]), brand], zebra=i % 2 == 1, height=26, styles=bold)
+        if not ranked:
+            ws.cell(r + 4, 1, "Không có sản phẩm bán ra trong kỳ").font = x.font(italic=True, color=MUTED)
+        r += 4 + max(len(ranked[:n]), 1) + 2
+    ws.cell(r, 1, f"In đậm: sản phẩm bán ≥ {TOP_QTY} cái trong kỳ. Xếp theo số lượng bán (không tính đơn huỷ, đã trừ hoàn).").font = \
+        x.font(9.5, color=MUTED, italic=True)
+
+
+def brand_sheet(ws, report, x, names, period):
+    """Thuong hieu ban chay (theo so luong) - tat ca gian Shopee + tung gian."""
+    import ads
+    sm, shops = ads.salesmen(), _shopee_shops(report)
+    merged = {}
+    for _, prods in shops:  # gop SP cua cac gian theo SKU de dem so SP khong trung
+        for p in prods:
+            m = merged.setdefault(p["sku"].upper() or p["name"], {"name": p["name"], "qty": 0, "revenue": 0.0})
+            m["qty"] += p["qty"]; m["revenue"] += p["revenue"]
+    L, C, R = "left", "center", "right"
+    cols = [("Gian hàng", None, 26, L, BLUE), ("Saleman", None, 14, L, BLUE), ("Hạng", None, 7, C, BLUE),
+            ("Thương hiệu", None, 20, L, BLUE), ("Số lượng", MONEY, 12, C, BLUE), ("Doanh thu (đ)", MONEY, 18, R, BLUE),
+            ("Số sản phẩm", MONEY, 12, C, BLUE)]
+    x.bar(ws, 1, "THƯƠNG HIỆU BÁN CHẠY", len(cols), size=16, height=40)
+    x.info(ws, 2, len(cols), "Kỳ báo cáo:", period)
+    x.header(ws, 4, cols, height=40)
+    r = 5
+    blocks = [("TẤT CẢ GIAN SHOPEE", "", list(merged.values()), 10)] + [(s["shop"], ads.salesman_of(s["shop"], sm), ps, 5) for s, ps in shops]
+    for label, saleman, prods, top in blocks:
+        for i, b in enumerate(brand_stats(prods, top, names)):
+            x.row(ws, r, cols, [label if i == 0 else None, saleman if i == 0 else None, i + 1, b["brand"], b["qty"], round(b["revenue"]), b["products"]],
+                  zebra=i % 2 == 1, height=24,
+                  styles={0: {"font": x.font(bold=True, color=BLUE)}, 1: {"font": x.font(color=MUTED)}})
+            r += 1
+    x.notes(ws, r + 1, len(cols), ["Xếp theo số lượng bán. Thương hiệu lấy theo chữ đầu tên sản phẩm (gộp các cách viết sai)."], title="GHI CHÚ:")
+    ws.freeze_panes = "A5"
 
 
 def fix_core_dates(data):
