@@ -24,6 +24,7 @@ VN = timezone(timedelta(hours=7))
 CHANNEL_NAMES = {"shopee": "Shopee", "tiktokshop": "TikTok Shop", "lazada": "Lazada", "tiki": "Tiki"}
 CACHE_SECONDS = 600
 TOP_QTY = 30  # "Top san pham ban hon 30 luot" (Yu: 30 cai, tinh theo tuan)
+TOP_N = 10    # sheet Top san pham: it nhat 10 SP moi gian (file FORM_REPORT_SHOPEE_ADS_MAU: "Top 10 san pham ban chay")
 # Thuong hieu = chu dau ten san pham (Sapo khong luu thuong hieu). Chu chung chung o dau -> tim tiep trong ten.
 GENERIC_WORDS = {"TRIPOD", "DOUBLE", "COMBO", "BO", "SET", "KIT", "DEN", "GIA", "TAY", "CHAN", "MIC", "HANG", "NEW", "KINGCOM"}
 BRAND_ALIASES = {"ULANZL": "ULANZI", "BOYAMIC": "BOYA", "BOYAMINI": "BOYA", "BOYALINK": "BOYA"}
@@ -337,14 +338,14 @@ def _shopee_shops(report):
 
 
 def top_sheet(ws, report, sheet, names):
-    """Nhom 1: top san pham tung gian theo so luong; luon co it nhat 5 SP dau de thay bestseller."""
+    """Nhom 1: top san pham tung gian theo so luong; luon co it nhat TOP_N SP dau (file mau: Top 10 ban chay)."""
     import ads
     from openpyxl.styles import Font
     sm, rows, best_rows = ads.salesmen(), [], []
     for r, prods in _shopee_shops(report):
         known = {k for k in (brand_key(p["name"]) for p in prods) if k}
         ranked = sorted((p for p in prods if p["qty"] > 0), key=lambda p: (-p["qty"], -p["revenue"]))
-        n = max(5, sum(1 for p in ranked if p["qty"] >= TOP_QTY))
+        n = max(TOP_N, sum(1 for p in ranked if p["qty"] >= TOP_QTY))
         for i, p in enumerate(ranked[:n], 1):
             if i == 1:
                 best_rows.append(len(rows))
@@ -395,83 +396,151 @@ def tracker_sheet(ws, report, ad_shops, sheet):
     d1, d2 = (datetime.strptime(report[k], "%Y-%m-%d") for k in ("from", "to"))
     ky = f"{d1:%d/%m} – {d2:%d/%m/%Y}"
     sm = ads.salesmen()
-    pct = lambda v: None if v is None else v / 100
     vn = lambda x: f"{round(x):,}".replace(",", ".")
+    div = lambda a, b: a / b if a is not None and b else None  # ty le (Excel dinh dang %), None neu khong tinh duoc
     rows = []
+    tot = {"orders": 0, "revenue": 0.0, "sp_cost": 0.0, "shop_cost": 0.0, "cost": 0.0, "conv": 0.0, "gmv": 0.0,
+           "mapped_cost": 0.0, "sapo_rev": 0.0, "impr": 0.0, "clicks": 0.0, "ad_orders_base": 0, "ad_rev_base": 0.0}
+    has_any_ads = has_any_sp = has_any_shop = False
+    aov = lambda rev, n: round(rev / n) if n else None
+
+    def ad_cols(orders, revenue, sp_cost, shop_cost, cost, conv, gmv, sapo_rev, mapped_cost, impr, clicks):
+        """Cot nhom QC theo file mau FORM_REPORT_SHOPEE_ADS_MAU (dung chung cho dong gian va dong Tong)."""
+        return [sp_cost, shop_cost, cost, conv, gmv,
+                div(cost, conv),                                   # CPO = chi phi QC / don tu QC
+                div(conv, orders),                                 # ty trong don tu QC / tong don gian
+                div(gmv, revenue),                                 # ty trong DT QC / DT gian
+                div(gmv, cost),                                    # ROAS
+                div(cost, gmv),                                    # ACOS = chi phi / doanh so QC
+                div(cost, revenue),                                # TACOS (file mau) = chi phi QC / DT ca gian
+                sapo_rev, div(mapped_cost, sapo_rev),              # TACOS SP chay QC (cong thuc Yu)
+                impr, clicks, div(clicks, impr), div(conv, clicks)]
+
     for r in report["shops"]:
         if r["channel"] != "Shopee":
             continue
         a = ad_shops.get(ads.norm(r["shop"]))
         best = r.get("bestseller")
         brands = ", ".join(f"{b['brand']} ({vn(b['qty'])})" for b in r.get("brands", []))
-        row = [ky, r["shop"], ads.salesman_of(r["shop"], sm),
+        orders, revenue = r["orders"], round(r["revenue"])
+        tot["orders"] += orders
+        tot["revenue"] += revenue
+        row = [ky, r["shop"], ads.salesman_of(r["shop"], sm), "Shopee", orders, revenue, aov(revenue, orders),
                f"{best['name']} ({vn(best['qty'])} cái)" if best else None, brands or None, len(r.get("top_qty", []))]
         if a:
+            has_any_ads = True
             sa = a.get("shop_ads") or {}
             has_sp = bool(a.get("product_ads"))  # chua tai file QC San pham -> de trong, khong ghi 0
-            row += [round(a["cost"] - sa.get("cost", 0)) if has_sp else None, round(sa.get("cost", 0)) if sa else None, round(a["cost"]),
-                    round(a["gmv"]), a["roas"], round(a.get("sapo_revenue") or 0) if has_sp else None, pct(a.get("tacos")), round(r["revenue"]),
-                    a["impressions"], a["clicks"], pct(a["ctr"]), a["conversions"], pct(a["cr"]),
-                    "; ".join(f["text"] for f in a["flags"] + [dict(f, text="QC Shop: " + f["text"]) for f in sa.get("flags", [])])]
+            has_any_sp |= has_sp
+            has_any_shop |= bool(sa)
+            sp_cost = round(a["cost"] - sa.get("cost", 0)) if has_sp else None
+            shop_cost = round(sa.get("cost", 0)) if sa else None
+            sapo_rev = round(a.get("sapo_revenue") or 0) if has_sp else None
+            mapped = a.get("mapped_cost", 0.0) if has_sp else None
+            row += ad_cols(orders, revenue, sp_cost, shop_cost, round(a["cost"]), a["conversions"], round(a["gmv"]),
+                           sapo_rev, mapped, a["impressions"], a["clicks"])
+            row.append("; ".join(f["text"] for f in a["flags"] + [dict(f, text="QC Shop: " + f["text"]) for f in sa.get("flags", [])]))
+            for k, v in (("sp_cost", sp_cost), ("shop_cost", shop_cost), ("cost", round(a["cost"])), ("conv", a["conversions"]),
+                         ("gmv", round(a["gmv"])), ("sapo_rev", sapo_rev), ("mapped_cost", mapped),
+                         ("impr", a["impressions"]), ("clicks", a["clicks"])):
+                tot[k] += v or 0
+            tot["ad_orders_base"] += orders
+            tot["ad_rev_base"] += revenue
         else:
-            row += [None] * 7 + [round(r["revenue"])] + [None] * 5 + ["Chưa có file Quảng cáo Shopee cùng kỳ"]
+            row += [None] * 17 + ["Chưa có file Quảng cáo Shopee cùng kỳ"]
         rows.append(row)
+    if rows:  # dong Tong (nhu file mau); ty le QC chi tinh tren cac gian co file QC
+        t = tot
+        total = ["", "TỔNG", "", "Shopee", t["orders"], t["revenue"], aov(t["revenue"], t["orders"]), None, None, None]
+        if has_any_ads:
+            total += ad_cols(t["ad_orders_base"], t["ad_rev_base"], t["sp_cost"] if has_any_sp else None,
+                             t["shop_cost"] if has_any_shop else None, t["cost"],
+                             t["conv"], t["gmv"], t["sapo_rev"] if has_any_sp else None, t["mapped_cost"] if has_any_sp else None,
+                             t["impr"], t["clicks"]) + [None]
+        else:
+            total += [None] * 18
+        rows.append(total)
+    money, pc = "#,##0", "0.0%"
     hr = sheet(ws, "Shopee Ads Weekly Tracker – theo dõi quảng cáo theo gian hàng",
-               ["Kỳ", "Gian hàng", "Saleman", "Bán chạy nhất (số lượng)", "Thương hiệu bán chạy (số lượng)",
-                f"Số SP bán ≥ {TOP_QTY} cái", "Chi phí QC Sản phẩm (đ)", "Chi phí QC Shop (đ)", "Tổng chi phí QC (đ)",
-                "Doanh số từ QC (đ)", "ROAS", "Doanh thu Sapo SP chạy QC (đ)", "TACOS", "Doanh thu cả gian (đ)",
-                "Lượt hiển thị", "Lượt click", "CTR", "Đơn từ QC", "CR", "Đánh giá tự động"],
-               rows, [None, None, None, None, None, "#,##0", "#,##0", "#,##0", "#,##0", "#,##0", "0.0", "#,##0", "0.0%", "#,##0",
-                      "#,##0", "#,##0", "0.00%", "#,##0", "0.00%", None],
-               [16, 24, 11, 40, 34, 10, 14, 13, 14, 15, 7, 16, 8, 16, 11, 9, 8, 9, 8, 70])
-    ws.cell(hr + len(rows) + 2, 1, "TACOS = chi phí QC Sản phẩm / doanh thu Sapo của các SP chạy QC × 100 (tốt 8–12%). "
-            "Bán chạy và thương hiệu xếp theo số lượng; thương hiệu lấy theo chữ đầu tên sản phẩm. "
-            "Chỉ gian Shopee; số QC chỉ có khi đã tải file Quảng cáo Shopee đúng cùng kỳ.").font = Font(italic=True, color="71717A")
+               ["Kỳ", "Gian hàng", "Saleman", "Nền tảng", "Tổng số đơn", "Doanh thu gian hàng (đ)", "AOV (đ)",
+                "Bán chạy nhất (số lượng)", "Thương hiệu bán chạy (số lượng)", f"Số SP bán ≥ {TOP_QTY} cái",
+                "Chi phí QC Sản phẩm (đ)", "Chi phí QC Shop (đ)", "Tổng chi phí QC (đ)", "Đơn hàng từ QC", "Doanh số từ QC (đ)",
+                "CPO (đ)", "Tỷ trọng đơn từ QC", "Tỷ trọng DT QC", "ROAS (lần)", "ACOS", "TACOS (QC / DT cả gian)",
+                "Doanh thu Sapo SP chạy QC (đ)", "TACOS SP chạy QC", "Lượt hiển thị", "Lượt click", "CTR", "CR", "Đánh giá tự động"],
+               rows, [None, None, None, None, money, money, money, None, None, money,
+                      money, money, money, money, money, money, pc, pc, "0.0", "0.0%", "0.0%",
+                      money, "0.0%", money, money, "0.00%", "0.00%", None],
+               [16, 24, 11, 9, 9, 16, 13, 40, 34, 10, 14, 13, 14, 9, 15, 12, 10, 10, 7, 8, 10, 16, 9, 11, 9, 8, 8, 70])
     if rows:
-        ws.auto_filter.ref = f"A{hr}:T{hr + len(rows)}"
+        for c in ws[hr + len(rows)]:  # dong Tong in dam
+            c.font = Font(bold=True)
+    notes = [
+        "AOV = doanh thu gian hàng / tổng số đơn.  CPO = chi phí QC / đơn hàng từ QC.",
+        "Tỷ trọng đơn từ QC = đơn hàng từ QC / tổng số đơn.  Tỷ trọng DT QC = doanh số từ QC / doanh thu gian hàng.",
+        "ROAS = doanh số từ QC / chi phí QC (càng cao càng tốt).  ACOS = chi phí QC / doanh số từ QC (càng thấp càng tốt).",
+        "TACOS (QC / DT cả gian) = tổng chi phí QC / doanh thu gian hàng (công thức file mẫu).",
+        "TACOS SP chạy QC = chi phí QC Sản phẩm / doanh thu Sapo của các SP chạy QC (công thức Yu, tốt 8–12%; dùng cho đánh giá tự động).",
+        "Tổng số đơn, doanh thu: đơn Sapo, không tính đơn huỷ, đã trừ tiền hoàn. Số QC theo file Quảng cáo Shopee cùng kỳ (chưa trừ huỷ, hoàn).",
+        "Bán chạy và thương hiệu xếp theo số lượng; thương hiệu lấy theo chữ đầu tên sản phẩm. Dòng TỔNG: tỷ lệ QC chỉ tính trên các gian có file QC.",
+    ]
+    for i, text in enumerate(notes):
+        ws.cell(hr + len(rows) + 2 + i, 1, text).font = Font(italic=True, color="71717A")
+    if rows:
+        ws.auto_filter.ref = f"A{hr}:AB{hr + len(rows) - 1}"
 
 
 def ads_sheet(ws, a, sheet, period):
-    """Sheet Quang cao Shopee: moi dong 1 san pham chay QC, kem dong tong tung gian."""
+    """Sheet Quang cao Shopee (= sheet "Chi Tiet" file mau): moi dong 1 san pham / chien dich chay QC, kem dong tong tung gian."""
+    import ads
     from openpyxl.styles import Font, PatternFill
     T = a["thresholds"]
     pct = lambda v: None if v is None else v / 100
+    rnd = lambda v: None if v is None else round(v)
+
+    def line(shop, kind, name, sku, m, sapo=True):
+        return [shop, kind, name, sku, m["sold"], round(m["gmv"]), round(m["cost"]), m["impressions"], m["clicks"], pct(m["ctr"]),
+                m["add_to_cart"], pct(m.get("atc_rate")), m["conversions"], pct(m["cr"]),
+                m["conversions_direct"], pct(m.get("cr_direct")), rnd(m.get("cpo_direct")),
+                m["roas"], m["roas_direct"], pct(m.get("acos")), pct(m.get("acos_direct")),
+                rnd(m.get("sapo_revenue")) if sapo else None, pct(m.get("tacos")) if sapo else None,
+                "; ".join(f["text"] for f in m["flags"])]
+
     rows, shop_rows = [], []
     for s in a["shops"]:
         shop_rows.append(len(rows))
-        rows.append([s["shop"], "TỔNG GIAN" + (f" · {s['saleman']}" if s.get("saleman") else ""), "", s["impressions"], s["clicks"],
-                     pct(s["ctr"]), s["conversions"], pct(s["cr"]),
-                     round(s["cost"]), round(s["gmv"]), s["roas"], round(s.get("sapo_revenue") or 0), pct(s.get("tacos")),
-                     "; ".join(f["text"] for f in s["flags"])])
+        rows.append(line(s["shop"], "TỔNG GIAN" + (f" · {s['saleman']}" if s.get("saleman") else ""), "", "",
+                         dict(s, sapo_revenue=s.get("sapo_revenue") or 0)))
         sa = s.get("shop_ads")
         if sa:
-            rows.append([s["shop"], "Quảng cáo Shop: " + ", ".join(sa["campaigns"]), "(cả gian)", sa["impressions"], sa["clicks"],
-                         pct(sa["ctr"]), sa["conversions"], pct(sa["cr"]), round(sa["cost"]), round(sa["gmv"]), sa["roas"],
-                         None if sa.get("sapo_revenue") is None else round(sa["sapo_revenue"]), pct(sa.get("tacos")),
-                         "; ".join(f["text"] for f in sa["flags"])])
+            rows.append(line(s["shop"], ads.KINDS["shop"], ", ".join(sa["campaigns"]), "(cả gian)", sa))
             for k in sa.get("keywords", []):
-                rows.append([s["shop"], f"   Từ khóa: {k['keyword']}" + (f" ({k['keyword_type']})" if k["keyword_type"] else ""), "",
-                             k["impressions"], k["clicks"], pct(k["ctr"]), k["conversions"], pct(k["cr"]), round(k["cost"]),
-                             round(k["gmv"]), k["roas"], None, None, "; ".join(f["text"] for f in k["flags"])])
+                rows.append(line(s["shop"], ads.KINDS["shop"], f"   Từ khóa: {k['keyword']}" + (f" ({k['keyword_type']})" if k["keyword_type"] else ""),
+                                 "", k, sapo=False))
         for p in s["products"]:
-            rows.append([s["shop"], p["name"], ", ".join(p["skus"]), p["impressions"], p["clicks"], pct(p["ctr"]), p["conversions"],
-                         pct(p["cr"]), round(p["cost"]), round(p["gmv"]), p["roas"],
-                         None if p.get("sapo_revenue") is None else round(p["sapo_revenue"]), pct(p.get("tacos")),
-                         "; ".join(f["text"] for f in p["flags"])])
-    hr = sheet(ws, "Hiệu quả quảng cáo Shopee (theo file Shopee Ads + doanh thu Sapo)",
-               ["Gian hàng", "Sản phẩm chạy quảng cáo", "SKU Sapo", "Lượt xem", "Lượt click", "CTR", "Đơn từ QC", "CR",
-                "Chi phí QC (đ)", "Doanh số từ QC (đ)", "ROAS", "Doanh thu Sapo SP chạy QC (đ)", "TACOS", "Đánh giá tự động"],
-               rows, [None, None, None, "#,##0", "#,##0", "0.00%", "#,##0", "0.00%", "#,##0", "#,##0", "0.0", "#,##0", "0.0%", None],
-               [22, 50, 14, 11, 10, 8, 10, 8, 14, 16, 7, 18, 8, 70])
+            rows.append(line(s["shop"], ads.KINDS["product"], p["name"], ", ".join(p["skus"]), p))
+    money = "#,##0"
+    hr = sheet(ws, "Chi tiết chiến dịch quảng cáo Shopee (theo file Shopee Ads + doanh thu Sapo)",
+               ["Gian hàng", "Loại hình quảng cáo", "Tên chiến dịch / sản phẩm", "SKU Sapo", "Sản phẩm đã bán", "Doanh số từ QC (đ)",
+                "Chi phí QC (đ)", "Lượt xem", "Lượt click", "Tỷ lệ click (CTR)", "Thêm vào giỏ hàng", "Tỷ lệ thêm vào giỏ",
+                "Đơn từ QC", "CR", "Lượt chuyển đổi trực tiếp", "Tỷ lệ chuyển đổi trực tiếp", "Chi phí mỗi chuyển đổi trực tiếp (đ)",
+                "ROAS", "ROAS trực tiếp", "ACOS", "ACOS trực tiếp", "Doanh thu Sapo SP chạy QC (đ)", "TACOS", "Đánh giá tự động"],
+               rows, [None, None, None, None, money, money, money, money, money, "0.00%", money, "0.00%", money, "0.00%",
+                      money, "0.00%", money, "0.0", "0.0", "0.0%", "0.0%", money, "0.0%", None],
+               [22, 20, 50, 14, 9, 15, 13, 10, 9, 9, 9, 9, 9, 8, 10, 10, 13, 7, 8, 8, 8, 16, 8, 70])
     bold, fill = Font(bold=True), PatternFill("solid", fgColor="F4F4F5")
     for k in shop_rows:
         for c in ws[hr + 1 + k]:
             c.font, c.fill = bold, fill
-    ws.cell(hr + len(rows) + 2, 1, f"ROAS = doanh số QC / chi phí. TACOS = chi phí QC / doanh thu Sapo của SKU đã gán × 100 "
-            f"(tốt: {T['tacos_low']:g}–{T['tacos_high']:g}%); riêng Quảng cáo Shop chia cho doanh thu cả gian. "
-            "CTR = click / lượt xem. CR = đơn từ QC / click. "
-            "Doanh số QC lấy theo Shopee (chưa trừ huỷ, hoàn); doanh thu Sapo đã trừ.").font = Font(italic=True, color="71717A")
-    ws.auto_filter.ref = f"A{hr}:N{hr + len(rows)}"
+    notes = [
+        "CTR = click / lượt xem.  Tỷ lệ thêm vào giỏ = thêm vào giỏ / click.  CR = đơn từ QC / click.  Tỷ lệ chuyển đổi trực tiếp = chuyển đổi trực tiếp / click.",
+        "Chi phí mỗi chuyển đổi trực tiếp = chi phí / lượt chuyển đổi trực tiếp.  ROAS = doanh số QC / chi phí.  ACOS = chi phí / doanh số QC "
+        "(“trực tiếp” = chỉ tính doanh số, đơn của chính sản phẩm được quảng cáo).",
+        f"TACOS = chi phí QC / doanh thu Sapo của SKU đã gán (tốt: {T['tacos_low']:g}–{T['tacos_high']:g}%); riêng Quảng cáo Shop chia cho doanh thu cả gian.",
+        "Doanh số QC lấy theo Shopee (chưa trừ huỷ, hoàn); doanh thu Sapo đã trừ.",
+    ]
+    for i, text in enumerate(notes):
+        ws.cell(hr + len(rows) + 2 + i, 1, text).font = Font(italic=True, color="71717A")
+    ws.auto_filter.ref = f"A{hr}:X{hr + len(rows)}"
 
 
 def fix_core_dates(data):

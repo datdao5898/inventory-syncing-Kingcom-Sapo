@@ -257,6 +257,13 @@ def _metrics(m, sapo_rev=None, shop_rev=None):
     m["roas"] = m["gmv"] / cost if cost else None
     m["roas_direct"] = m["gmv_direct"] / cost if cost else None
     m["cpc"] = cost / clicks if clicks else None
+    # Them theo file FORM_REPORT_SHOPEE_ADS_MAU (25/11/2026)
+    m["acos"] = 100 * cost / m["gmv"] if m["gmv"] else None                      # chi phi / doanh so QC
+    m["acos_direct"] = 100 * cost / m["gmv_direct"] if m["gmv_direct"] else None
+    m["cpo"] = cost / m["conversions"] if m["conversions"] else None             # chi phi moi don tu QC
+    m["cpo_direct"] = cost / m["conversions_direct"] if m["conversions_direct"] else None
+    m["atc_rate"] = 100 * m["add_to_cart"] / clicks if clicks else None          # ty le them vao gio
+    m["cr_direct"] = 100 * m["conversions_direct"] / clicks if clicks else None
     if sapo_rev is not None:
         m["sapo_revenue"] = sapo_rev
         m["tacos"] = 100 * m["mapped_cost"] / sapo_rev if sapo_rev > 0 else None
