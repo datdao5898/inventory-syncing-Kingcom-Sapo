@@ -405,6 +405,7 @@ def analyze(start, end, report=None):
         shop_m.update(shop=first["shop"], saleman=salesman_of(first["shop"], sm), username=first["username"],
                       kinds=sorted({u["kind"] for u in files}), uploaded_at=max(u["uploaded_at"] for u in files),
                       found_in_sapo=bool(sapo_shop), products=rows, shop_ads=shop_ads, product_ads=product_ads,
+                      shop_orders=sapo_shop["orders"] if has_sales and sapo_shop else None,  # tong don ca gian (Sapo)
                       unmapped=sum(1 for r in rows if r["unmapped"]),
                       sapo_skus=[{"sku": p["sku"], "name": p["name"]} for p in sorted(prods, key=lambda p: -p["revenue"])])
         # TACOS cua gian = chi QC San pham (chi phi SP da gan / doanh thu Sapo cac SP do) - cong thuc Yu chon
@@ -414,6 +415,7 @@ def analyze(start, end, report=None):
         total_rev += shop_mapped_rev
         total_shop_rev += shop_rev or 0.0
     total["unmapped"] = unmapped_total
+    total["shop_orders"] = sum(s["shop_orders"] or 0 for s in shops) if has_sales else None
     _metrics(total, total_rev if has_sales else None, total_shop_rev if has_sales else None)
     shops.sort(key=lambda s: -s["cost"])
     return {"from": start, "to": end, "has_sales": has_sales, "thresholds": THRESHOLDS, "total": total, "shops": shops,
