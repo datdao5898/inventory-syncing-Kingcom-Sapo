@@ -215,7 +215,7 @@ button.warnbtn:hover { background:#fef2f2; border-color:var(--bad); }
 .mrow .v { font-variant-numeric:tabular-nums; font-weight:500; white-space:nowrap; }
 .mrow.big .v { font-size:15px; font-weight:600; }
 .dot { display:inline-block; width:8px; height:8px; border-radius:50%; margin-left:6px; vertical-align:middle; }
-.dot.good { background:#16a34a; } .dot.bad { background:#dc2626; } .dot.warn { background:#f59e0b; }
+.dot.good { background:#16a34a; } .dot.bad { background:#dc2626; } .dot.warn { background:#f59e0b; } .dot.low { background:#2563eb; }
 .mrow .hint { font-size:11.5px; color:var(--muted); font-weight:400; margin-left:4px; }
 .scard-f { display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; padding:10px 18px; background:var(--hover); border-top:1px solid var(--line); font-size:12.5px; color:var(--muted); }
 .scard-f .split b { color:var(--text2); font-weight:600; }
@@ -373,7 +373,7 @@ input.sm-in { width:96px; }
         <thead><tr><th>Chỉ số</th><th>Cách tính</th><th>Hiểu thế nào</th></tr></thead>
         <tbody>
           <tr><td><b>ROAS</b></td><td>Doanh số từ QC ÷ chi phí QC</td><td>Bỏ 1 đồng quảng cáo thu về bao nhiêu đồng. Càng cao càng tốt; <b>&lt; 8</b> là thấp.</td></tr>
-          <tr><td><b>TACOS</b></td><td>Chi phí QC ÷ doanh thu Sapo của các SP chạy QC × 100</td><td><b>8–12%</b> là tốt. Cao hơn → tốn QC so với doanh thu. Thấp hơn mà ROAS tốt → có thể tăng ngân sách. QC Shop chia cho doanh thu cả gian.</td></tr>
+          <tr><td><b>TACOS</b></td><td>Chi phí QC ÷ doanh thu Sapo của các SP chạy QC × 100</td><td><b>8–12%</b> là tốt (chấm xanh lá). Cao hơn 12% → tốn QC so với doanh thu (chấm đỏ). Thấp hơn 8% → QC đang rẻ, có thể tăng ngân sách (chấm xanh dương). QC Shop chia cho doanh thu cả gian.</td></tr>
           <tr><td><b>CTR</b></td><td>Lượt click ÷ lượt xem</td><td><b>&lt; 6%</b> → ít người bấm, xem lại ảnh bìa, tiêu đề.</td></tr>
           <tr><td><b>CR</b></td><td>Đơn từ QC ÷ lượt click</td><td><b>&lt; 3%</b> → nhiều người xem nhưng ít mua, xem lại giá, mô tả.</td></tr>
           <tr><td><b>ACOS</b></td><td>Chi phí QC ÷ doanh số từ QC</td><td>Tỷ lệ chi phí trên doanh số quảng cáo (= 1 ÷ ROAS). Càng thấp càng tốt.</td></tr>
@@ -723,7 +723,7 @@ const money = n => {
   return fmt(Math.round(n)) + ' đ';
 };
 const TH = {roas: 'Doanh số từ QC ÷ chi phí QC. Càng cao càng tốt; cảnh báo khi < 8',
-  tacos: 'Chi phí QC ÷ doanh thu Sapo của SP chạy QC × 100. Tốt: 8–12%',
+  tacos: 'Chi phí QC ÷ doanh thu Sapo của SP chạy QC × 100. Xanh lá: 8–12% (tốt) · Xanh dương: dưới 8% (rẻ, có thể tăng ngân sách) · Đỏ: trên 12% (tốn QC)',
   ctr: 'Click ÷ lượt xem. Cảnh báo khi < 6%', cr: 'Đơn từ QC ÷ click. Cảnh báo khi < 3%',
   acos: 'Chi phí QC ÷ doanh số từ QC. Càng thấp càng tốt', cpo: 'Chi phí QC ÷ đơn từ QC (chi phí cho mỗi đơn)',
   aov: 'Doanh thu cả gian ÷ tổng số đơn (giá trị đơn bình quân)', oshare: 'Đơn từ QC ÷ tổng số đơn của gian',
@@ -782,7 +782,8 @@ $('#ads-period').onchange = async e => { adsPeriod = e.target.value; adsShop = '
 
 /* ---- Danh gia nhanh tung chi so (cung nguong voi danh gia tu dong trong ads.py) ---- */
 const roasLv = (m, T) => m.roas == null || !m.cost ? null : m.roas >= T.roas_min ? 'good' : 'bad';
-const tacosLv = (m, T) => m.tacos == null ? null : m.tacos > T.tacos_high ? 'bad' : 'good';
+const tacosLv = (m, T) => m.tacos == null ? null : m.tacos > T.tacos_high ? 'bad' : m.tacos < T.tacos_low ? 'low' : 'good';
+const tacosHint = (m, T) => tacosLv(m, T) === 'low' ? 'thấp – có thể tăng ngân sách' : 'tốt ' + T.tacos_low + '–' + T.tacos_high + '%';
 const ctrLv = (m, T) => m.impressions < T.min_impressions || m.ctr == null ? null : m.ctr >= T.ctr_min ? 'good' : 'bad';
 const crLv = (m, T) => m.clicks < T.min_clicks || m.cr == null ? null : m.cr >= T.cr_min ? 'good' : 'bad';
 const lvDot = lv => lv ? '<span class="dot ' + lv + '"></span>' : '';
@@ -819,7 +820,7 @@ function shopCard(s, a) {
     mrow('ROAS', num1(s.roas), TH.roas, roasLv(s, T), 'tốt ≥ ' + T.roas_min) +
     mrow('ACOS', pctv(s.acos), TH.acos) +
     mrow('CPO', s.cpo == null ? '–' : money(s.cpo), TH.cpo) +
-    mrow('TACOS SP chạy QC', pctv(s.tacos), TH.tacos, tacosLv(s, T), 'tốt ' + T.tacos_low + '–' + T.tacos_high + '%') +
+    mrow('TACOS SP chạy QC', pctv(s.tacos), TH.tacos, tacosLv(s, T), s.tacos == null ? '' : tacosHint(s, T)) +
     mrow('TACOS cả gian', sapo ? pct(s.cost, rev) : '–', TH.tacosShop) + '</div>';
   const b3 = '<div class="blk b3"><h4>Hiển thị &amp; chuyển đổi</h4>' +
     mrow('Lượt xem', fmt(s.impressions), 'Số lần quảng cáo được hiển thị') +
@@ -844,7 +845,7 @@ function shopCard(s, a) {
 function shopCards(a) {
   const T = a.thresholds;
   return '<div class="shop-cards">' + a.shops.map(s => shopCard(s, a)).join('') + '</div>' +
-    '<div class="legend-dots"><span><span class="dot good"></span> đạt ngưỡng tốt</span><span><span class="dot bad"></span> dưới ngưỡng, cần xem lại</span>' +
+    '<div class="legend-dots"><span><span class="dot good"></span> đạt ngưỡng tốt</span><span><span class="dot bad"></span> dưới ngưỡng, cần xem lại</span><span><span class="dot low"></span> TACOS thấp (&lt; ' + T.tacos_low + '%) – có thể tăng ngân sách</span>' +
     '<span>Ngưỡng: ROAS ≥ ' + T.roas_min + ' · TACOS ' + T.tacos_low + '–' + T.tacos_high + '% · CTR ≥ ' + T.ctr_min + '% · CR ≥ ' + T.cr_min + '%</span>' +
     '<span>CTR chỉ đánh giá khi ≥ ' + fmt(T.min_impressions) + ' lượt xem, CR khi ≥ ' + T.min_clicks + ' click</span></div>';
 }
@@ -878,7 +879,7 @@ function renderAds() {
       : vnd(t.cost)) +
     kpi('Doanh số từ QC', money(t.gmv), 'Trực tiếp: ' + money(t.gmv_direct)) +
     kpi('ROAS', num1(t.roas), 'ACOS ' + pctv(t.acos) + ' · trực tiếp ' + num1(t.roas_direct)) +
-    kpi('TACOS', pctv(t.tacos), a.has_sales ? 'Tốt: ' + T.tacos_low + '–' + T.tacos_high + '%' + (t.unmapped ? ' · ' + t.unmapped + ' SP chưa gán' : '') : 'Cần doanh thu Sapo') +
+    kpi('TACOS', pctv(t.tacos) + lvDot(tacosLv(t, T)), a.has_sales ? (tacosLv(t, T) === 'low' ? 'Thấp – có thể tăng ngân sách' : 'Tốt: ' + T.tacos_low + '–' + T.tacos_high + '%') + (t.unmapped ? ' · ' + t.unmapped + ' SP chưa gán' : '') : 'Cần doanh thu Sapo') +
     kpi('CTR', pctv(t.ctr, 2), fmt(t.clicks) + ' click / ' + fmt(t.impressions) + ' xem') +
     kpi('CR', pctv(t.cr, 2), fmt(t.conversions) + ' đơn từ QC · CPO ' + (t.cpo == null ? '–' : vnd(t.cpo))) + '</div>';
   // o so lieu dung chung cho 2 bang (cung thu tu nhom cot); them cot theo file FORM_REPORT_SHOPEE_ADS_MAU (25/11/2026)
