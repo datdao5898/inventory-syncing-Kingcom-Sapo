@@ -306,6 +306,29 @@ def write_report(site, updates, loc_names):
     return path
 
 
+STOCK_SNAPSHOT_FILE = os.path.join(REPORT_DIR, "stock_snapshot.json")
+
+
+def write_stock_snapshot(sapo, sapo_stock):
+    """Ton Sapo theo SKU va chi nhanh sau moi lan tai, cho bot chat KC AI doc
+    (bot chi noi con/het hang, khong noi so luong). Ghi atomic de bot khong doc file dang ghi do."""
+    names = {l["id"]: l.get("name", "") for l in sapo.locations()}
+    locs = sorted(sapo_stock)
+    skus = sorted(set().union(*(sapo_stock[loc].keys() for loc in locs))) if locs else []
+    data = {
+        "generated_at": datetime.now().astimezone().isoformat(timespec="seconds"),
+        "qty_field": sapo.qty_field,
+        "locations": [{"id": loc, "name": names.get(loc, str(loc))} for loc in locs],
+        "stock": {sku: {str(loc): sapo_stock[loc].get(sku, 0) for loc in locs} for sku in skus},
+    }
+    os.makedirs(REPORT_DIR, exist_ok=True)
+    tmp = STOCK_SNAPSHOT_FILE + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False)
+    os.replace(tmp, STOCK_SNAPSHOT_FILE)
+    log.info("Da ghi ton Sapo cho bot chat: %d SKU, %d chi nhanh", len(skus), len(locs))
+
+
 def save_last_run(site, data):
     """Ket qua lan chay gan nhat (danh sach thay doi) cho giao dien web."""
     os.makedirs(site.dir, exist_ok=True)
@@ -440,6 +463,11 @@ def run_sync(apply, confirm=None, only_sku=None, sites=None):
     if sapo.duplicate_skus:
         log.warning("Sapo: %d SKU bi trung (khac hoa/thuong) - ton duoc cong don",
                     len(sapo.duplicate_skus))
+    if only_sku is None:
+        try:
+            write_stock_snapshot(sapo, sapo_stock)
+        except Exception as e:  # snapshot chi phuc vu bot chat, khong duoc lam hong dong bo
+            log.warning("Khong ghi duoc %s: %s", STOCK_SNAPSHOT_FILE, e)
 
     plans = []
     for site in targets:
