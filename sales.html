@@ -242,6 +242,20 @@ input.sm-in { width:96px; }
 .tight th, .tight td { padding:9px 10px; }
 .tight th:first-child, .tight td:first-child { padding-left:18px; }
 
+/* chon cot / chi so hien thi */
+.colpick { position:relative; display:inline-block; }
+.colpick > summary { list-style:none; cursor:pointer; font-size:12.5px; font-weight:500; padding:5px 10px; border:1px solid var(--line); border-radius:6px; background:#fff; color:var(--text2); display:inline-flex; align-items:center; gap:6px; white-space:nowrap; }
+.colpick > summary::-webkit-details-marker { display:none; }
+.colpick > summary:hover, .colpick[open] > summary { border-color:#d4d4d8; background:var(--hover); color:var(--text); }
+.colpick .n { font-size:11px; color:var(--muted); font-weight:400; }
+.colpick-menu { position:absolute; right:0; top:calc(100% + 6px); z-index:25; background:#fff; border:1px solid var(--line); border-radius:8px; box-shadow:0 6px 20px rgba(0,0,0,.10); padding:10px 12px; width:max-content; max-width:min(560px, 92vw); max-height:70vh; overflow:auto; }
+.colpick-menu h5 { margin:8px 0 4px; font-size:11px; font-weight:600; letter-spacing:.04em; text-transform:uppercase; color:var(--faint); }
+.colpick-menu h5:first-child { margin-top:0; }
+.colpick-menu .opts { display:grid; grid-template-columns:repeat(2, minmax(160px, auto)); gap:2px 14px; }
+.colpick-menu label { display:flex; align-items:center; gap:7px; font-size:13px; color:var(--text2); padding:3px 0; cursor:pointer; white-space:nowrap; }
+.colpick-menu .foot { display:flex; justify-content:space-between; align-items:center; gap:10px; margin-top:10px; padding-top:8px; border-top:1px solid var(--line); font-size:12px; color:var(--muted); }
+.colpick-menu .foot button { padding:3px 10px; font-size:12px; }
+
 @media (max-width:900px) {
   .kpis.k6 { grid-template-columns:repeat(3, minmax(0,1fr)); }
   .blocks { grid-template-columns:1fr; } .blk + .blk { border-left:0; border-top:1px solid var(--line); }
@@ -302,7 +316,7 @@ input.sm-in { width:96px; }
       <div class="card">
         <div class="card-h">
           <div><h2>Doanh thu theo gian hàng</h2><p>Không tính đơn đã huỷ · doanh thu đã trừ tiền hoàn trả hàng · gán Saleman ngay trong bảng</p></div>
-          <div class="seg" id="chart-type"><button data-type="pie" class="on">Biểu đồ tròn</button><button data-type="bar">Biểu đồ cột</button></div>
+          <div class="row"><span id="pick-overview"></span><div class="seg" id="chart-type"><button data-type="pie" class="on">Biểu đồ tròn</button><button data-type="bar">Biểu đồ cột</button></div></div>
         </div>
         <div id="chart"></div>
         <div class="wrap"><table>
@@ -329,6 +343,7 @@ input.sm-in { width:96px; }
           <select id="psort"><option value="revenue">Xếp theo doanh thu</option><option value="qty">Xếp theo số lượng</option></select>
           <select id="pper" title="Số sản phẩm mỗi trang"><option value="20">20 / trang</option><option value="50">50 / trang</option><option value="100">100 / trang</option></select>
           <span class="small muted" id="count"></span>
+          <span class="spacer"></span><span id="pick-prod"></span>
         </div>
         <div class="wrap"><table><thead id="prod-head"></thead><tbody id="prod"></tbody></table></div>
         <div class="more" id="more"></div>
@@ -499,6 +514,7 @@ function renderShops() {
     '<td class="hide-sm best">' + brandTxt(r.brands) + '</td></tr>').join('') +
     '<tr><td><b>Tổng cộng</b></td><td></td><td></td><td class="num"><b>' + fmt(t.orders) + '</b></td><td class="num"><b>' + vnd(t.revenue) + '</b></td><td class="num">' + (t.orders ? vnd(t.revenue / t.orders) : '–') + '</td><td class="num">100%</td>' +
     '<td class="num hide-sm muted">' + fmt(t.cancelled) + '</td><td class="hide-sm best">' + bestTxt(t.bestseller) + '</td><td class="hide-sm best">' + brandTxt((t.brands || []).slice(0, 3)) + '</td></tr>';
+  setupOverviewCols();
 }
 $('#shops').addEventListener('change', async e => {
   const shop = e.target.dataset.saleman; if (shop == null) return;
@@ -676,6 +692,7 @@ function renderProducts() {
     '<tr><td colspan="4" class="empty">Không có sản phẩm</td></tr>';
   $('#more').innerHTML = pages > 1 ? pager(page, pages) + '<span class="small muted" style="margin-left:10px">' + fmt(start + 1) + '–' +
     fmt(Math.min(start + per, rows.length)) + ' / ' + fmt(rows.length) + '</span>' : '';
+  setupProductCols();
 }
 function pager(cur, n) {
   const nums = [...new Set([1, cur - 2, cur - 1, cur, cur + 1, cur + 2, n])].filter(x => x >= 1 && x <= n).sort((a, b) => a - b);
@@ -921,7 +938,7 @@ function renderAds() {
   // ===== Che do Gon / Day du
   h += '<div class="row" style="margin-top:18px; align-items:center"><div class="small muted">' +
     (adsFull ? 'Đang xem <b>bảng đầy đủ</b> mọi chỉ số (kéo ngang để xem hết cột).' : 'Đang xem <b>dạng gọn</b>: mỗi gian 1 thẻ, rê chuột vào tên chỉ số để xem cách tính.') + '</div>' +
-    '<div class="seg view-seg"><button data-view="0"' + (adsFull ? '' : ' class="on"') + '>Gọn, dễ đọc</button><button data-view="1"' + (adsFull ? ' class="on"' : '') + '>Đầy đủ chỉ số</button></div></div>';
+    '<div class="row" style="margin-left:auto; gap:8px"><span id="pick-ads"></span><div class="seg"><button data-view="0"' + (adsFull ? '' : ' class="on"') + '>Gọn, dễ đọc</button><button data-view="1"' + (adsFull ? ' class="on"' : '') + '>Đầy đủ chỉ số</button></div></div></div>';
   if (!adsFull) h += shopCards(a);
   // ===== Bang 1: theo gian hang
   if (adsFull) h += '<div class="sec"><div class="sec-h"><div><h3>Theo gian hàng</h3><p>Dòng đậm = tổng của gian; bấm tên gian để xem sản phẩm của gian đó · bảng rộng, kéo ngang để xem hết cột</p></div></div>' +
@@ -971,7 +988,7 @@ function renderAds() {
       '<td class="num">' + pctv(p.cr, 2) + lvDot(crLv(p, T)) + '</td><td class="num">' + fmt(p.conversions) + '</td>';
   const P_COLS = adsFull ? PROD_COLS : 9;
   h += '<div class="sec" id="ads-prod"><div class="sec-h"><div><h3>Theo sản phẩm chạy quảng cáo</h3><p>Gán SKU Sapo cho sản phẩm để tính TACOS' + (adsFull ? '' : ' · chấm xanh = đạt ngưỡng tốt, đỏ = cần xem lại') + '</p></div>' +
-    '<select id="ads-shop"><option value="">Tất cả gian hàng</option>' + a.shops.map(s => '<option' + (s.shop === adsShop ? ' selected' : '') + '>' + esc(s.shop) + '</option>').join('') + '</select></div>' +
+    '<div class="row" style="gap:8px"><span id="pick-adsprod"></span><select id="ads-shop"><option value="">Tất cả gian hàng</option>' + a.shops.map(s => '<option' + (s.shop === adsShop ? ' selected' : '') + '>' + esc(s.shop) + '</option>').join('') + '</select></div></div>' +
     '<div class="wrap"><table class="tight"><thead>' +
     (adsFull ? grp([['', 2], ['Chi phí &amp; doanh số QC', 5], ['So với doanh thu Sapo', 2], ['Hiển thị &amp; chuyển đổi', 8], ['Chuyển đổi trực tiếp', 5]]) : '') +
     '<tr><th>Sản phẩm</th><th>SKU Sapo</th>' + pTh + '</tr></thead><tbody>' +
@@ -998,6 +1015,7 @@ function renderAds() {
         pTds(p) + '</tr>';
     }).join('')).join('') + '</tbody></table></div></div>';
   $('#ads-body').innerHTML = h;
+  setupAdsCols();
   const inp = $('#map-in'); if (inp) inp.focus();
 }
 async function saveMap(item, skus) {
@@ -1030,6 +1048,131 @@ $('#ads-body').addEventListener('keydown', e => {
   if (e.key === 'Escape') { adsEdit = ''; renderAds(); }
 });
 $('#ads-body').addEventListener('change', e => { if (e.target.id === 'ads-shop') { adsShop = e.target.value; renderAds(); } });
+
+/* ---------- chon cot / chi so hien thi (luu theo trinh duyet, khong anh huong file Excel) ---------- */
+// Cot/chi so mac dinh TAT (con lai mac dinh hien). Khoa cot co nhom = "Nhom · Ten cot".
+const DIRECT = 'Chuyển đổi trực tiếp';
+const COL_OFF = {
+  kpiOverview: ['Gian hàng có đơn', 'Đơn đã huỷ'],
+  shops: ['Đơn huỷ', 'Thương hiệu bán chạy'],
+  prod: ['Số gian bán'],
+  kpiAds: [],
+  adsShop: ['Chi phí & doanh số QC · ACOS', 'So với cả gian (Sapo) · Tổng đơn', 'So với cả gian (Sapo) · AOV', 'So với cả gian (Sapo) · Tỷ trọng đơn QC',
+    'So với DT SP chạy QC · DT SP chạy QC', 'Hiển thị & chuyển đổi · Hiển thị', 'Hiển thị & chuyển đổi · Thêm giỏ', 'Hiển thị & chuyển đổi · Tỷ lệ thêm giỏ',
+    'Hiển thị & chuyển đổi · SP đã bán', DIRECT + ' ·'],
+  adsProdFull: ['Chi phí & doanh số QC · ACOS', 'So với doanh thu Sapo · DT Sapo', 'Hiển thị & chuyển đổi · Hiển thị', 'Hiển thị & chuyển đổi · Thêm giỏ',
+    'Hiển thị & chuyển đổi · Tỷ lệ thêm giỏ', 'Hiển thị & chuyển đổi · SP đã bán', DIRECT + ' ·'],
+  adsProdCompact: []
+};
+const COL_FIXED = new Set(['Gian hàng', 'Sản phẩm', 'SKU Sapo']);  // luon hien
+const colPrefs = set => { try { return JSON.parse(localStorage.getItem('cols-' + set) || '{}'); } catch (e) { return {}; } };
+const colDefault = (set, key) => !(COL_OFF[set] || []).some(k => k.endsWith('·') ? key.startsWith(k) : k === key);
+const colOn = (set, key) => { const p = colPrefs(set); return key in p ? p[key] : colDefault(set, key); };
+function setColPref(set, key, on) {
+  const p = colPrefs(set);
+  if (on === colDefault(set, key)) delete p[key]; else p[key] = on;
+  try { localStorage.setItem('cols-' + set, JSON.stringify(p)); } catch (e) {}
+}
+const cellSpan = c => Number(c.dataset.span || c.colSpan || 1);
+// Cot cua bang theo hang tieu de cuoi; nhom lay tu hang tieu de nhom (tr.grp) neu co.
+function tableCols(table) {
+  if (!table || !table.tHead || !table.tHead.rows.length) return [];
+  const rows = [...table.tHead.rows], head = rows[rows.length - 1], grpRow = rows.find(r => r.classList.contains('grp'));
+  const groups = [];
+  if (grpRow) { let i = 0; for (const th of grpRow.cells) for (let k = 0; k < cellSpan(th); k++) groups[i++] = th.textContent.trim(); }
+  let i = 0;
+  return [...head.cells].map(th => {
+    const label = th.textContent.trim(), group = groups[i] || '';
+    const col = {index: i, label, group, key: group ? group + ' · ' + label : label};
+    i += cellSpan(th);
+    return col;
+  });
+}
+function applyCols(table, set) {
+  const cols = tableCols(table);
+  if (!cols.length) return;
+  const hidden = new Set(cols.filter(c => !COL_FIXED.has(c.label) && !colOn(set, c.key)).map(c => c.index));
+  for (const row of table.rows) {
+    let i = 0;
+    for (const cell of row.cells) {
+      const span = cellSpan(cell);
+      if (!cell.dataset.span) cell.dataset.span = span;
+      let vis = 0;
+      for (let k = i; k < i + span; k++) if (!hidden.has(k)) vis++;
+      cell.style.display = vis ? '' : 'none';
+      if (span > 1 && vis) cell.colSpan = vis;
+      i += span;
+    }
+  }
+}
+function kpiItems(box) { return box ? [...box.querySelectorAll('.kpi .lbl')].map(l => ({key: l.textContent.trim(), label: l.textContent.trim()})) : []; }
+function applyKpis(box, set) {
+  if (!box) return;
+  box.querySelectorAll('.kpi').forEach(card => { card.style.display = colOn(set, card.querySelector('.lbl').textContent.trim()) ? '' : 'none'; });
+}
+// sections: [{title, set, items: [{key, label, group}], apply()}]
+function mountPicker(host, sections) {
+  if (!host) return;
+  sections = sections.filter(s => s.items.length);
+  if (!sections.length) { host.innerHTML = ''; return; }
+  const count = () => sections.reduce((a, s) => a + s.items.filter(it => colOn(s.set, it.key)).length, 0);
+  const total = sections.reduce((a, s) => a + s.items.length, 0);
+  const body = sections.map((s, si) => {
+    let h = '<h5>' + esc(s.title) + '</h5>', lastGroup = null;
+    const opts = s.items.map(it => {
+      let g = '';
+      if (it.group !== undefined && it.group !== lastGroup && it.group) g = '</div><h5>' + esc(it.group) + '</h5><div class="opts">';
+      lastGroup = it.group;
+      return g + '<label><input type="checkbox" data-sec="' + si + '" data-key="' + esc(it.key) + '"' + (colOn(s.set, it.key) ? ' checked' : '') + '>' + esc(it.label) + '</label>';
+    }).join('');
+    return h + '<div class="opts">' + opts + '</div>';
+  }).join('');
+  host.innerHTML = '<details class="colpick"><summary>⚙ Chọn cột <span class="n">' + count() + '/' + total + '</span></summary><div class="colpick-menu">' + body +
+    '<div class="foot"><span>Lưu riêng trên trình duyệt này</span><button type="button" data-reset="1">Về mặc định</button></div></div></details>';
+  host.querySelector('.colpick-menu').addEventListener('change', e => {
+    const cb = e.target; if (cb.dataset.sec == null) return;
+    const s = sections[cb.dataset.sec];
+    setColPref(s.set, cb.dataset.key, cb.checked);
+    s.apply();
+    host.querySelector('.n').textContent = count() + '/' + total;
+  });
+  host.querySelector('[data-reset]').onclick = () => {
+    sections.forEach(s => { try { localStorage.removeItem('cols-' + s.set); } catch (e) {} s.apply(); });
+    mountPicker(host, sections);
+    host.querySelector('details').open = true;
+  };
+}
+// Bam ra ngoai thi dong menu chon cot
+document.addEventListener('click', e => { document.querySelectorAll('details.colpick[open]').forEach(d => { if (!d.contains(e.target)) d.open = false; }); });
+const colItems = table => tableCols(table).filter(c => !COL_FIXED.has(c.label) && c.label).map(c => ({key: c.key, label: c.label, group: c.group}));
+function setupOverviewCols() {
+  const table = $('#shops').closest('table');
+  applyKpis($('#kpis'), 'kpiOverview');
+  applyCols(table, 'shops');
+  mountPicker($('#pick-overview'), [
+    {title: 'Thẻ tổng quan', set: 'kpiOverview', items: kpiItems($('#kpis')), apply: () => applyKpis($('#kpis'), 'kpiOverview')},
+    {title: 'Cột bảng gian hàng', set: 'shops', items: colItems(table), apply: () => applyCols(table, 'shops')}
+  ]);
+}
+function setupProductCols() {
+  const table = $('#prod').closest('table');
+  applyCols(table, 'prod');
+  mountPicker($('#pick-prod'), [{title: 'Cột bảng sản phẩm', set: 'prod', items: colItems(table), apply: () => applyCols(table, 'prod')}]);
+}
+function setupAdsCols() {
+  const body = $('#ads-body'), kpis = body.querySelector('.kpis');
+  const shopTable = adsFull ? body.querySelector('.sec:not(#ads-prod) table') : null;
+  const prodTable = body.querySelector('#ads-prod table');
+  const prodSet = adsFull ? 'adsProdFull' : 'adsProdCompact';
+  applyKpis(kpis, 'kpiAds');
+  if (shopTable) applyCols(shopTable, 'adsShop');
+  if (prodTable) applyCols(prodTable, prodSet);
+  mountPicker($('#pick-ads'), [
+    {title: 'Thẻ tổng quảng cáo', set: 'kpiAds', items: kpiItems(kpis), apply: () => applyKpis(kpis, 'kpiAds')},
+    ...(shopTable ? [{title: 'Cột bảng theo gian hàng', set: 'adsShop', items: colItems(shopTable), apply: () => applyCols(shopTable, 'adsShop')}] : [])
+  ]);
+  mountPicker($('#pick-adsprod'), prodTable ? [{title: 'Cột bảng sản phẩm chạy QC', set: prodSet, items: colItems(prodTable), apply: () => applyCols(prodTable, prodSet)}] : []);
+}
 
 load();
 loadAds();
